@@ -1,0 +1,16 @@
+services:
+  all-in-one-library:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: all-in-one-library-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - APP_URL=${APP_URL:-http://localhost:3000}
+    env_file:
+      - .env

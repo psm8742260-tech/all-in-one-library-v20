@@ -237,32 +237,6 @@ export default function LibraryModal({
               </div>
             </div>
           </div>
-
-          {/* Section 4: Folder Filter & Admin Settings */}
-          <div className="pt-2 border-t border-orange-300 flex justify-between items-center text-xs">
-            {isAdmin ? (
-              <button
-                onClick={() => {
-                  onOpenAdminPanel();
-                  onClose();
-                }}
-                className="bg-amber-200 hover:bg-amber-300 border-2 border-amber-400 text-black font-extrabold flex items-center gap-1.5 py-1.5 px-3 rounded-lg shadow-sm transition-all scale-100 hover:scale-105 active:scale-95"
-              >
-                <ShieldCheck className="w-4 h-4 text-black font-black" />
-                <span className="text-black font-extrabold">అడ్మిన్ ప్యానెల్ (Admin Panel)</span>
-                <span className="bg-amber-300 text-black border border-amber-400 font-extrabold px-1.5 py-0.5 rounded-full text-[9px]">
-                  6606 Verified
-                </span>
-              </button>
-            ) : (
-              <div />
-            )}
-
-            <span className="text-[10px] text-slate-700/60 font-mono">
-              User: {user.email}
-            </span>
-          </div>
-
         </div>
       </motion.div>
     </div>

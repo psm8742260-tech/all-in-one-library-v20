@@ -389,7 +389,10 @@ app.get('/api/codebase-pdf', (req, res) => {
     'src/components/LibraryModal.tsx',
     'src/components/PricingPanel.tsx',
     'src/components/PaymentModal.tsx',
-    'src/components/WriterRegistrationModal.tsx'
+    'src/components/WriterRegistrationModal.tsx',
+    'Dockerfile',
+    '.dockerignore',
+    'docker-compose.yml'
   ];
 
   const filesData = [];
