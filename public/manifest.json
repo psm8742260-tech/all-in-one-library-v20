@@ -1,0 +1,18 @@
+{
+  "name": "All-in-One Library",
+  "short_name": "AILI",
+  "description": "A comprehensive mobile-first library app featuring an AI book assistant, multilingual UI, secure login, folder management, and reading rate pricing mechanisms.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fff7ed",
+  "theme_color": "#fff7ed",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/app_logo_icon_1787974156637.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}

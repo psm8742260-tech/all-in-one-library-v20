@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Remix All in One Library V20</title>
+    <meta name="description" content="A comprehensive mobile-first library app featuring an AI book assistant, multilingual UI, secure login, folder management, and reading rate pricing mechanisms." />
+    <meta property="og:title" content="Remix All in One Library V20" />
+    <meta property="og:description" content="A comprehensive mobile-first library app featuring an AI book assistant, multilingual UI, secure login, folder management, and reading rate pricing mechanisms." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#fff7ed" />
+    <link rel="apple-touch-icon" href="/app_logo_icon_1787974156637.jpg" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((reg) => console.log('Service Worker registered successfully:', reg.scope))
+            .catch((err) => console.warn('Service Worker registration failed:', err));
+        });
+      }
+    </script>
+  </body>
+</html>
+

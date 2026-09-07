@@ -1,0 +1,8 @@
+{
+  "name": "Remix All in One Library V20",
+  "description": "A comprehensive mobile-first library app featuring an AI book assistant, multilingual UI, secure login, folder management, and reading rate pricing mechanisms.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
