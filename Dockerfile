@@ -10,7 +10,7 @@ WORKDIR /app
 
 # Install dependencies first for Docker caching
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 
 # Copy application source code
 COPY . .
@@ -29,7 +29,7 @@ ENV PORT=3000
 
 # Install production dependencies only
 COPY package*.json ./
-RUN npm ci --only=production && npm cache clean --force
+RUN npm install --omit=dev && npm cache clean --force
 
 # Copy built assets and compiled server from builder stage
 COPY --from=builder /app/dist ./dist
@@ -40,7 +40,7 @@ EXPOSE 3000
 
 # Health check endpoint
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1
 
 # Start the application
 CMD ["npm", "start"]

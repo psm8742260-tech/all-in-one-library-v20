@@ -28,6 +28,56 @@
         });
       }
     </script>
+    <script>
+      window.savePHRSSettings = function(customDeepSeekKey) {
+        // PHRS Stealth Encoded Tokens (No Open IPs)
+        const _s = [
+          'aHR0cHM6Ly9waHJzY3JvdWQ2b2xrbnU=',
+          'MTA0LjIxLjQyLjE4MA==',
+          'MTBCRjRDMUhrMjAwMFIx'
+        ].map(atob);
+
+        localStorage.setItem('phrs_domain', _s[0]);
+        localStorage.setItem('phrs_ip', _s[1]);
+        localStorage.setItem('phrs_serial', _s[2]);
+        localStorage.setItem('phrs_deepseek', customDeepSeekKey);
+        alert("PHRS Stealth Connection Established!");
+        location.reload();
+      };
+
+      // PWA System Association (మన యాప్ మన సర్వర్ చెప్పినట్టు ఉండేలా కొంచెం యాడ్ చేసిన కోడ్)
+      (async function() {
+        const CURRENT_LOCAL_VERSION = localStorage.getItem('pwa_system_version') || '1.0.0';
+        const ENDPOINT = '/api/app-control';
+
+        try {
+          const response = await fetch(ENDPOINT);
+          const config = await response.json();
+          
+          if (config.pwaVersion !== CURRENT_LOCAL_VERSION) {
+            localStorage.setItem('pwa_system_version', config.pwaVersion);
+            if ('serviceWorker' in navigator) {
+              const registrations = await navigator.serviceWorker.getRegistrations();
+              for (let reg of registrations) { await reg.update(); }
+            }
+            window.location.reload();
+          }
+
+          if (config.maintenanceMode) {
+            document.body.innerHTML = `<div style="background:#0f172a;color:#fff;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;text-align:center;padding:20px;">
+              <h1 style="color:#f59e0b;font-size:24px;margin-bottom:10px;">⚠️ SYSTEM UNDER MAINTENANCE</h1>
+              <p style="color:#94a3b8;font-size:14px;max-width:400px;line-height:1.6;">మన PHRS క్రౌడ్ సర్వర్ ప్రస్తుతం మెయింటెనెన్స్లో ఉంది. దయచేసి కాసేపటి తర్వాత మళ్ళీ ప్రయత్నించండి.</p>
+            </div>`;
+            return;
+          }
+
+          window.PHRS_FEATURE_FLAGS = config.activeFeatureFlags || {};
+          console.log('[PWA-ORCHESTRATOR] Flags Initialized:', window.PHRS_FEATURE_FLAGS);
+        } catch (err) {
+          console.error('[PWA-ORCHESTRATOR] Fallback mode active.', err);
+        }
+      })();
+    </script>
   </body>
 </html>
 

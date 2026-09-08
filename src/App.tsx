@@ -21,6 +21,9 @@ export default function App() {
       const saved = localStorage.getItem('library_folders');
       if (saved) {
         const parsed = JSON.parse(saved);
+        if (!parsed.some((f: any) => f.id === 'fol-general')) {
+          parsed.splice(1, 0, { id: 'fol-general', name: 'సాధారణ గ్రంథాలయం (General Books)', parentId: null });
+        }
         if (!parsed.some((f: any) => f.id === 'fol-talapatra')) {
           parsed.push({ id: 'fol-talapatra', name: 'తాళపత్ర గ్రంథాలు', parentId: null });
         }
@@ -31,6 +34,7 @@ export default function App() {
     }
     return [
       { id: 'fol-classics', name: 'Classics', parentId: null },
+      { id: 'fol-general', name: 'సాధారణ గ్రంథాలయం (General Books)', parentId: null },
       { id: 'fol-scifi', name: 'Science Fiction', parentId: null },
       { id: 'fol-philosophy', name: 'Strategy & Philosophy', parentId: null },
       { id: 'fol-talapatra', name: 'తాళపత్ర గ్రంథాలు', parentId: null }

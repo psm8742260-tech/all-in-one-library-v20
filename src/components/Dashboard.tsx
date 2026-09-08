@@ -4,7 +4,7 @@ import {
   Menu, X, MessageSquare, BookOpen, Coins, Globe, LogOut, 
   Send, Sparkles, Loader2, FolderPlus, Compass, ArrowRight,
   Bookmark, FolderHeart, Check, ShoppingCart, Lock,
-  HelpCircle, ChevronRight, ChevronDown, BookOpenCheck, AlertCircle, Grid, Filter,
+  HelpCircle, ChevronRight, BookOpenCheck, AlertCircle, Grid, Filter,
   Download, QrCode, Mic, Film, Volume2, VolumeX, Image, Video, Paperclip, Plus, Trash2, RefreshCw
 } from 'lucide-react';
 import { 
@@ -77,8 +77,6 @@ export default function Dashboard({
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showLangMenu, setShowLangMenu] = useState(false);
-  const [isGeneralFolderOpen, setIsGeneralFolderOpen] = useState(true);
-  const [isTalapatraFolderOpen, setIsTalapatraFolderOpen] = useState(true);
   
   // Chat state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -88,6 +86,16 @@ export default function Dashboard({
 
   // Selected book for details modal
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
+
+  const [expandedFolderId, setExpandedFolderId] = useState<'general' | 'talapatra' | null>(null);
+
+  const getBookCharsCount = (book: Book) => {
+    return book.chapters ? book.chapters.reduce((sum, chap) => sum + (chap.content ? chap.content.length : 0), 0) : 0;
+  };
+
+  const getBookWordsCount = (book: Book) => {
+    return book.chapters ? book.chapters.reduce((sum, chap) => sum + (chap.content ? chap.content.split(/\s+/).filter(Boolean).length : 0), 0) : 0;
+  };
 
   // Payment Modal state for UPI QR Scanner
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
@@ -674,7 +682,7 @@ Downloaded from All In One Library Hub
         costPerMinute: generatedData.costPerMinute || provisionalBook.costPerMinute,
         chapters: generatedData.chapters || [],
         isUnlocked: true, // Auto unlocked since they paid for fetch!
-        folderId: isPalmBook ? 'fol-talapatra' : (activeFolderId || undefined) // Organize directly into active folder or system palm leaf folder!
+        folderId: isPalmBook ? 'fol-talapatra' : 'fol-general' // Save in General Library folder!
       };
 
       onUpdateBooks([newBook, ...books]);
@@ -1160,35 +1168,23 @@ Downloaded from All In One Library Hub
                               return (
                                 <div 
                                   key={provisionalBook.id} 
-                                  className="bg-orange-50/90 border border-orange-300 hover:border-orange-400 rounded-xl py-1.5 px-2.5 flex items-center justify-between gap-3 shadow-xs transition-all"
+                                  className="bg-orange-50 border border-orange-300 rounded-xl p-2 px-2.5 flex items-start gap-2 shadow-sm hover:border-orange-400 transition-all"
                                 >
-                                  {/* Realistic 3D Book Look with Spine */}
-                                  <div className="relative w-8 h-10 shrink-0 rounded-r shadow-md overflow-hidden border-r border-t border-b border-amber-900/40 bg-amber-950 flex">
-                                    <div className="w-1 h-full bg-gradient-to-r from-amber-950 via-amber-800 to-amber-900/60 shadow-inner shrink-0 border-r border-amber-600/40" />
-                                    <img 
-                                      src={displayBook.coverImage || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=200&q=80'} 
-                                      alt={displayBook.title}
-                                      className="w-full h-full object-cover rounded-r-xs"
-                                    />
-                                    <div className="absolute inset-0 bg-gradient-to-tr from-black/20 via-transparent to-white/15 pointer-events-none" />
+                                  <div className="p-1 bg-orange-500/10 rounded-lg text-orange-400 border border-orange-500/20 shrink-0">
+                                    <BookOpen className="w-4 h-4" />
                                   </div>
-
-                                  <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
-                                    <div className="min-w-0">
-                                      <div className="flex items-center gap-1.5">
-                                        <h5 className="text-[11px] font-black text-slate-900 truncate">{displayBook.title}</h5>
-                                        <span className="font-mono text-slate-900 font-black text-[9px] bg-orange-200/80 border border-orange-300 px-1 rounded shrink-0">{displayBook.costToUnlock} Cr</span>
-                                      </div>
-                                      <p className="text-[9px] text-slate-700 truncate font-medium">రచయిత: {displayBook.author}</p>
-                                    </div>
+                                  <div className="flex-1 min-w-0">
+                                    <h5 className="text-[11px] font-bold text-slate-900 line-clamp-1">{displayBook.title}</h5>
+                                    <p className="text-[9px] text-slate-800 line-clamp-1">by {displayBook.author} • <span className="font-mono text-slate-900 font-bold">{displayBook.costToUnlock} Credits</span></p>
+                                    <p className="text-[10px] text-slate-700 line-clamp-1 mt-0.5 leading-normal hidden sm:block">{displayBook.description}</p>
                                     
                                     {/* Action buttons inside book card: 1. Listen (Free ₹0), 2. Read (₹10), 3. Download (₹29) */}
-                                    <div className="flex flex-wrap gap-1 items-center shrink-0">
+                                    <div className="mt-1.5 flex flex-wrap gap-1 items-center">
                                       {/* 1. Free Audio / Speaker Button */}
                                       <button
                                         type="button"
                                         onClick={(e) => handlePlayBookAudio(displayBook, e)}
-                                        className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold transition flex items-center gap-1 shadow-xs border ${
+                                        className={`text-[9px] px-2 py-1 rounded-lg font-bold transition flex items-center gap-1 shadow-sm border ${
                                           currentlySpeakingBookId === displayBook.id
                                             ? 'bg-amber-500 text-slate-950 border-orange-400 animate-pulse'
                                             : 'bg-orange-200 hover:bg-orange-300 text-slate-800 hover:text-slate-950 border-orange-400'
@@ -1197,12 +1193,12 @@ Downloaded from All In One Library Hub
                                       >
                                         {currentlySpeakingBookId === displayBook.id ? (
                                           <>
-                                            <VolumeX className="w-2.5 h-2.5" />
+                                            <VolumeX className="w-3 h-3" />
                                             <span>ఆపు</span>
                                           </>
                                         ) : (
                                           <>
-                                            <Volume2 className="w-2.5 h-2.5 text-slate-900" />
+                                            <Volume2 className="w-3 h-3 text-slate-900" />
                                             <span>వినండి</span>
                                           </>
                                         )}
@@ -1213,11 +1209,11 @@ Downloaded from All In One Library Hub
                                         <button
                                           type="button"
                                           onClick={(e) => handleOpenSampleReader(existingBook || displayBook, e)}
-                                          className="bg-sky-600 hover:bg-sky-500 text-slate-900 text-[9px] px-1.5 py-0.5 rounded-md font-bold transition flex items-center gap-1 shadow-xs border border-sky-500/25"
+                                          className="bg-sky-600 hover:bg-sky-500 text-slate-900 text-[9px] px-2 py-1 rounded-lg font-bold transition flex items-center gap-1 shadow-sm border border-sky-500/25"
                                           title="పుస్తకం ఉచిత శాంపిల్ చదవండి"
                                         >
-                                          <BookOpen className="w-2.5 h-2.5 text-slate-850" />
-                                          <span>శాంపిల్</span>
+                                          <BookOpen className="w-3 h-3 text-slate-850" />
+                                          <span>శాంపిల్ (Sample)</span>
                                         </button>
                                       )}
 
@@ -1225,17 +1221,17 @@ Downloaded from All In One Library Hub
                                       {(existingBook?.isUnlocked || isAdmin) ? (
                                         <button
                                           onClick={() => onOpenReader(existingBook || displayBook)}
-                                          className="bg-emerald-600 hover:bg-emerald-500 text-slate-900 text-[9px] px-1.5 py-0.5 rounded-md font-bold transition flex items-center gap-1 shadow-xs"
+                                          className="bg-emerald-600 hover:bg-emerald-500 text-slate-900 text-[9px] px-2 py-1 rounded-lg font-bold transition flex items-center gap-1 shadow-sm"
                                         >
-                                          <BookOpenCheck className="w-2.5 h-2.5" />
+                                          <BookOpenCheck className="w-3 h-3" />
                                           <span>చదవండి</span>
                                         </button>
                                       ) : (
                                         <button
                                           onClick={() => handleOpenPayment(displayBook, 'read')}
-                                          className="bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-slate-900 text-[9px] px-1.5 py-0.5 rounded-md font-bold transition flex items-center gap-1 shadow-xs"
+                                          className="bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-slate-900 text-[9px] px-2 py-1 rounded-lg font-bold transition flex items-center gap-1 shadow-sm"
                                         >
-                                          <QrCode className="w-2.5 h-2.5 text-slate-800" />
+                                          <QrCode className="w-3 h-3 text-slate-800" />
                                           <span>చదవండి (₹{readPriceINR})</span>
                                         </button>
                                       )}
@@ -1249,9 +1245,9 @@ Downloaded from All In One Library Hub
                                             handleOpenPayment(displayBook, 'download');
                                           }
                                         }}
-                                        className="bg-orange-300 hover:bg-orange-400 border border-orange-300 text-slate-800 text-[9px] px-1.5 py-0.5 rounded-md font-bold transition flex items-center gap-1 shadow-xs"
+                                        className="bg-orange-300 hover:bg-orange-400 border border-orange-300 text-slate-800 text-[9px] px-2 py-1 rounded-lg font-bold transition flex items-center gap-1 shadow-sm"
                                       >
-                                        <Download className="w-2.5 h-2.5 text-slate-900" />
+                                        <Download className="w-3 h-3 text-slate-900" />
                                         <span>{isAdmin ? 'డౌన్‌లోడ్' : `డౌన్‌లోడ్ (₹${downloadPriceINR})`}</span>
                                       </button>
 
@@ -1260,16 +1256,16 @@ Downloaded from All In One Library Hub
                                         <button
                                           onClick={() => handleFetchBookWithAI(provisionalBook)}
                                           disabled={fetchingBookId !== null}
-                                          className="bg-orange-100 hover:bg-orange-200 border border-orange-400 text-slate-900 text-[9px] px-1.5 py-0.5 rounded-md font-bold transition flex items-center gap-1 shadow-xs disabled:opacity-50"
+                                          className="bg-orange-100 hover:bg-orange-200 border border-orange-400 text-slate-900 text-[9px] px-2 py-1 rounded-lg font-bold transition flex items-center gap-1 shadow-sm disabled:opacity-50"
                                         >
                                           {fetchingBookId === provisionalBook.id ? (
                                             <>
-                                              <Loader2 className="w-2 h-2 animate-spin" />
+                                              <Loader2 className="w-2.5 h-2.5 animate-spin" />
                                               <span>AI...</span>
                                             </>
                                           ) : (
                                             <>
-                                              <Sparkles className="w-2 h-2 text-slate-900" />
+                                              <Sparkles className="w-2.5 h-2.5 text-slate-900" />
                                               <span>జోడించు</span>
                                             </>
                                           )}
@@ -1519,377 +1515,218 @@ Downloaded from All In One Library Hub
                 })}
               </div>
 
-              {/* Dual Parallel Books Folders & Archive.org Style Gallery View */}
-              <div className="flex-1 flex flex-col gap-5 min-h-0 overflow-y-auto pt-2 pb-6 pr-1">
-                
-                {/* Folder 1: General Library (సాధారణ గ్రంథాలయం) */}
-                <div className="bg-orange-50/50 border-2 border-orange-200 hover:border-orange-300 rounded-2xl shadow-xs transition-all overflow-hidden shrink-0">
-                  {/* Folder Header - Touch to expand / collapse */}
-                  <div 
-                    onClick={() => setIsGeneralFolderOpen(!isGeneralFolderOpen)}
-                    className="p-3.5 sm:p-4 bg-gradient-to-r from-orange-100/90 to-amber-100/80 cursor-pointer flex items-center justify-between gap-2 select-none hover:bg-orange-100 transition"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="text-xl shrink-0">📁</span>
-                      <div className="min-w-0">
-                        <h4 className="text-sm sm:text-base font-black text-slate-900 truncate">
+              {/* Dual Parallel Books List View */}
+              <div className="flex-1 min-h-0 overflow-hidden pt-2 relative">
+                {expandedFolderId === null ? (
+                  <div className="flex flex-col gap-3 py-2">
+                    
+                    {/* Folder 1: General Library Books (Mobile List Style) */}
+                    <div 
+                      onClick={() => setExpandedFolderId('general')}
+                      className="flex items-center gap-4 p-3.5 bg-white hover:bg-orange-50/50 cursor-pointer transition-all duration-200 select-none border border-slate-100 rounded-xl shadow-sm active:bg-orange-100/40 group"
+                    >
+                      {/* Left Side: Elegant folder icon */}
+                      <div className="w-11 h-11 rounded-xl bg-orange-100 flex items-center justify-center text-xl shrink-0 shadow-sm border border-orange-200 group-hover:scale-105 transition-transform duration-200">
+                        📁
+                      </div>
+                      
+                      {/* Center: Folder Name & Subtitle */}
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-serif font-black text-xs sm:text-sm text-slate-800 tracking-wide truncate">
                           సాధారణ గ్రంథాలయం (General Books)
                         </h4>
-                        <p className="text-[10px] text-slate-600 font-medium">
-                          {isGeneralFolderOpen ? 'పుస్తకాలను దాచడానికి టచ్ చేయండి' : 'పుస్తకాలను చూడటానికి ఇక్కడ టచ్ చేయండి'}
+                        <p className="text-[10px] sm:text-[11px] text-slate-500 mt-0.5 font-semibold">
+                          సాధారణ విభాగం లోని గ్రంథాల జాబితా
                         </p>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="bg-orange-200 text-orange-950 border border-orange-300 text-[11px] px-2.5 py-0.5 rounded-full font-black">
-                        {filteredBooks.filter(b => b.folderId !== 'fol-talapatra').length} పుస్తకాలు
-                      </span>
-                      <div className="p-1 rounded-full bg-white/70 text-slate-700">
-                        {isGeneralFolderOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+
+                      {/* Right Side: Chevron & Count Badge */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="bg-orange-100 text-orange-950 border border-orange-200 text-[10px] px-2.5 py-0.5 rounded-full font-black">
+                          {filteredBooks.filter(b => b.folderId !== 'fol-talapatra').length}
+                        </span>
+                        <ChevronRight className="w-4 h-4 text-slate-400" />
                       </div>
                     </div>
-                  </div>
 
-                  {/* Books Gallery - Archive.org Style Grid */}
-                  {isGeneralFolderOpen && (
-                    <div className="p-3 sm:p-4 bg-orange-50/30 border-t border-orange-200">
-                      {filteredBooks.filter(b => b.folderId !== 'fol-talapatra').length > 0 ? (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-3.5 sm:gap-4">
-                          {filteredBooks.filter(b => b.folderId !== 'fol-talapatra').map((book) => (
-                            <div
+                    {/* Folder 2: Palm Leaf Manuscripts (Mobile List Style) */}
+                    <div 
+                      onClick={() => setExpandedFolderId('talapatra')}
+                      className="flex items-center gap-4 p-3.5 bg-white hover:bg-amber-50/50 cursor-pointer transition-all duration-200 select-none border border-slate-100 rounded-xl shadow-sm active:bg-amber-100/40 group"
+                    >
+                      {/* Left Side: Elegant scroll icon */}
+                      <div className="w-11 h-11 rounded-xl bg-amber-100 flex items-center justify-center text-xl shrink-0 shadow-sm border border-amber-200 group-hover:scale-105 transition-transform duration-200">
+                        📜
+                      </div>
+                      
+                      {/* Center: Folder Name & Subtitle */}
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-serif font-black text-xs sm:text-sm text-slate-800 tracking-wide truncate">
+                          తాళపత్ర గ్రంథాలు (Palm Leaf Manuscripts)
+                        </h4>
+                        <p className="text-[10px] sm:text-[11px] text-slate-500 mt-0.5 font-semibold">
+                          తాళపత్ర విభాగం లోని గ్రంథాల జాబితా
+                        </p>
+                      </div>
+
+                      {/* Right Side: Chevron & Count Badge */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="bg-amber-100 text-amber-950 border border-amber-200 text-[10px] px-2.5 py-0.5 rounded-full font-black">
+                          {filteredBooks.filter(b => b.folderId === 'fol-talapatra').length}
+                        </span>
+                        <ChevronRight className="w-4 h-4 text-slate-400" />
+                      </div>
+                    </div>
+
+                  </div>
+                ) : (
+                  // Expanded Folder View
+                  <div className="h-full flex flex-col bg-orange-100/20 border border-orange-300 rounded-2xl p-4 shadow-md overflow-hidden relative animate-fade-in">
+                    {/* Header */}
+                    <div className="flex justify-between items-center border-b border-orange-300 pb-3 mb-4 shrink-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl">{expandedFolderId === 'general' ? '📁' : '📜'}</span>
+                        <h4 className="text-xs sm:text-sm font-black text-black">
+                          {expandedFolderId === 'general' ? 'సాధారణ గ్రంథాలయం (General Books)' : 'తాళపత్ర గ్రంథాలు (Palm Leaf Manuscripts)'}
+                        </h4>
+                        <span className="bg-orange-200 text-black border border-orange-300 text-[10px] px-2.5 py-0.5 rounded-full font-black">
+                          {expandedFolderId === 'general' 
+                            ? filteredBooks.filter(b => b.folderId !== 'fol-talapatra').length 
+                            : filteredBooks.filter(b => b.folderId === 'fol-talapatra').length}
+                        </span>
+                      </div>
+
+                      {/* Plus Mark to Go Back / Close */}
+                      <button 
+                        onClick={() => setExpandedFolderId(null)}
+                        className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-orange-200 hover:bg-orange-300 border border-orange-300 flex items-center justify-center text-slate-800 transition active:scale-95 group shadow-sm"
+                        title="వెనక్కి వెళ్ళండి (Back to Folders)"
+                        id="folder-back-plus-btn"
+                      >
+                        <Plus className="w-5 h-5 sm:w-6 sm:h-6 text-orange-950 font-bold group-hover:rotate-45 transition-transform duration-200" />
+                      </button>
+                    </div>
+
+                    {/* Books Grid */}
+                    <div className="flex-1 overflow-y-auto pr-1 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 pb-4">
+                      {expandedFolderId === 'general' ? (
+                        filteredBooks.filter(b => b.folderId !== 'fol-talapatra').map((book, index) => {
+                          const charCount = getBookCharsCount(book);
+                          const charDisplay = charCount >= 1000 ? `${(charCount / 1000).toFixed(1)}k` : charCount;
+                          return (
+                            <div 
                               key={book.id}
                               onClick={() => setSelectedBook(book)}
-                              className="group bg-white rounded-xl border-2 border-orange-200 hover:border-orange-400 p-2 sm:p-2.5 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between"
+                              className="flex flex-col bg-gradient-to-b from-indigo-950 via-slate-900 to-slate-950 rounded-xl cursor-pointer transition border border-orange-200/40 hover:border-orange-400 group shadow-lg hover:-translate-y-1 relative overflow-hidden select-none h-60"
                             >
-                              {/* Book Poster Cover with spine effect (Archive.org style) */}
-                              <div className="relative aspect-[3/4] w-full rounded-lg overflow-hidden bg-amber-950 shadow-inner flex mb-2">
-                                <div className="w-2 h-full bg-gradient-to-r from-amber-950 via-amber-800 to-amber-900/60 shadow-inner shrink-0 border-r border-amber-600/40" />
-                                <img
-                                  src={book.coverImage || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=300&q=80'}
-                                  alt={book.title}
-                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent pointer-events-none" />
-
-                                {/* Category Tag */}
-                                <span className="absolute top-1.5 left-2.5 text-[8px] bg-black/70 text-amber-300 px-1.5 py-0.5 rounded font-mono font-bold uppercase tracking-wider backdrop-blur-xs">
-                                  {book.category}
-                                </span>
-
-                                {/* Status Tag */}
-                                <div className="absolute top-1.5 right-1.5">
-                                  {book.isUnlocked ? (
-                                    <span className="text-[8px] bg-emerald-600/90 text-white px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5 shadow-xs">
-                                      <Check className="w-2 h-2" /> అన్‌లాక్డ్
-                                    </span>
+                              {/* Book spine line effect */}
+                              <div className="absolute top-0 left-0 w-1.5 h-full bg-orange-400/40 border-r border-orange-500/20" />
+                              
+                              {/* Cover Main Content */}
+                              <div className="flex-1 p-3 flex flex-col justify-between text-center pl-5 relative z-10">
+                                {/* Top Badge */}
+                                <div className="flex justify-between items-center">
+                                  <span className="text-[7px] text-orange-300 font-mono font-black border border-orange-400/30 px-1 py-0.5 rounded uppercase tracking-widest bg-orange-950/40">
+                                    {book.category}
+                                  </span>
+                                  {book.isUnlocked || isAdmin ? (
+                                    <span className="text-[7px] text-emerald-400 font-bold bg-emerald-950/50 px-1.5 py-0.5 rounded">✓ Open</span>
                                   ) : (
-                                    <span className="text-[8px] bg-amber-600/90 text-white px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5 shadow-xs">
-                                      <Lock className="w-2 h-2" /> లాక్డ్
-                                    </span>
+                                    <span className="text-[7px] text-amber-400 font-bold bg-amber-950/50 px-1.5 py-0.5 rounded">Locked</span>
                                   )}
                                 </div>
 
-                                {/* Content Type Tag */}
-                                {book.contentType === 'audio' && (
-                                  <span className="absolute bottom-1.5 left-2.5 text-[8px] bg-amber-500 text-slate-950 font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-xs">
-                                    <Mic className="w-2 h-2" /> వాయిస్
-                                  </span>
-                                )}
-                                {book.contentType === 'video' && (
-                                  <span className="absolute bottom-1.5 left-2.5 text-[8px] bg-rose-600 text-white font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-xs">
-                                    <Film className="w-2 h-2" /> వీడియో
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* Title and Author info */}
-                              <div className="space-y-0.5 mb-2">
-                                <h5 className="font-serif font-black text-xs sm:text-sm text-slate-900 leading-tight group-hover:text-orange-600 transition-colors line-clamp-2" title={book.title}>
-                                  {book.title}
-                                </h5>
-                                <p className="text-[10px] text-slate-600 truncate font-medium">
-                                  రచయిత: {book.author}
-                                </p>
-                              </div>
-
-                              {/* Action Buttons */}
-                              <div className="pt-2 border-t border-orange-100 flex flex-col gap-1.5">
-                                <div className="grid grid-cols-2 gap-1 text-[9px]">
-                                  {/* Listen Button */}
-                                  <button
-                                    type="button"
-                                    onClick={(e) => handlePlayBookAudio(book, e)}
-                                    className={`w-full py-1 px-1 rounded-md font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
-                                      currentlySpeakingBookId === book.id
-                                        ? 'bg-amber-500 text-slate-950 border border-orange-400 animate-pulse'
-                                        : 'bg-orange-100 hover:bg-orange-200 text-orange-950 border border-orange-300'
-                                    }`}
-                                  >
-                                    {currentlySpeakingBookId === book.id ? (
-                                      <>
-                                        <VolumeX className="w-2.5 h-2.5" />
-                                        <span>ఆపు</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Volume2 className="w-2.5 h-2.5" />
-                                        <span>వినండి</span>
-                                      </>
-                                    )}
-                                  </button>
-
-                                  {/* Sample or Read Button */}
-                                  {localStorage.getItem('library_is_sample_enabled') !== 'false' && !(book.isUnlocked || isAdmin) ? (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => handleOpenSampleReader(book, e)}
-                                      className="w-full py-1 px-1 rounded-md font-bold bg-sky-100 hover:bg-sky-200 text-sky-950 border border-sky-300 transition flex items-center justify-center gap-1 cursor-pointer"
-                                    >
-                                      <BookOpen className="w-2.5 h-2.5" />
-                                      <span>శాంపిల్</span>
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (book.isUnlocked || isAdmin) {
-                                          onOpenReader(book);
-                                        } else {
-                                          handleOpenPayment(book, 'read');
-                                        }
-                                      }}
-                                      className="w-full py-1 px-1 rounded-md font-bold bg-emerald-100 hover:bg-emerald-200 text-emerald-950 border border-emerald-300 transition flex items-center justify-center gap-1 cursor-pointer"
-                                    >
-                                      <BookOpenCheck className="w-2.5 h-2.5" />
-                                      <span>చదవండి</span>
-                                    </button>
-                                  )}
+                                {/* Centered Graphic Symbol */}
+                                <div className="my-1 flex justify-center">
+                                  <div className="w-12 h-12 rounded-full bg-orange-500/10 border border-orange-500/25 flex items-center justify-center text-xl shadow-inner group-hover:scale-110 transition-transform">
+                                    📖
+                                  </div>
                                 </div>
 
-                                {/* Download or Full Read action */}
-                                {book.isUnlocked || isAdmin ? (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleDownloadBook(book);
-                                    }}
-                                    className="w-full py-1 px-1 rounded-md font-bold bg-orange-200 hover:bg-orange-300 text-orange-950 border border-orange-300 text-[10px] transition flex items-center justify-center gap-1 cursor-pointer"
-                                  >
-                                    <Download className="w-2.5 h-2.5" />
-                                    <span>డౌన్‌లోడ్</span>
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleOpenPayment(book, 'read');
-                                    }}
-                                    className="w-full py-1 px-1 rounded-md font-bold bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-[10px] transition flex items-center justify-center gap-1 shadow-xs cursor-pointer"
-                                  >
-                                    <QrCode className="w-2.5 h-2.5" />
-                                    <span>చదవండి (₹{readPriceINR})</span>
-                                  </button>
-                                )}
+                                {/* Book Title & Author */}
+                                <div className="space-y-1">
+                                  <h4 className="font-serif font-black text-[11px] sm:text-xs text-amber-100 group-hover:text-orange-300 transition line-clamp-2 leading-tight tracking-wide px-1">
+                                    {book.title}
+                                  </h4>
+                                  <p className="text-[8px] text-slate-400 font-medium truncate">by {book.author}</p>
+                                </div>
+                              </div>
+
+                              {/* Internet Archive style bottom count bar */}
+                              <div className="bg-slate-800/80 border-t border-slate-700/50 px-3 py-1.5 flex items-center gap-1.5 text-slate-300 text-[9px] font-bold tracking-wider shrink-0 pl-5">
+                                <span className="text-[10px]">📋</span>
+                                <span className="truncate">{charDisplay} అక్షరాలు • {book.chapters.length} Ch</span>
                               </div>
                             </div>
-                          ))}
-                        </div>
+                          );
+                        })
                       ) : (
-                        <div className="text-center py-10 text-slate-500 text-xs font-semibold">
+                        filteredBooks.filter(b => b.folderId === 'fol-talapatra').map((book, index) => {
+                          const charCount = getBookCharsCount(book);
+                          const charDisplay = charCount >= 1000 ? `${(charCount / 1000).toFixed(1)}k` : charCount;
+                          return (
+                            <div 
+                              key={book.id}
+                              onClick={() => setSelectedBook(book)}
+                              className="flex flex-col bg-gradient-to-b from-amber-900 via-amber-950 to-stone-950 rounded-xl cursor-pointer transition border border-amber-300/40 hover:border-amber-400 group shadow-lg hover:-translate-y-1 relative overflow-hidden select-none h-60"
+                            >
+                              {/* Book spine line effect */}
+                              <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500/40 border-r border-amber-600/20" />
+                              
+                              {/* Cover Main Content */}
+                              <div className="flex-1 p-3 flex flex-col justify-between text-center pl-5 relative z-10">
+                                {/* Top Badge */}
+                                <div className="flex justify-between items-center">
+                                  <span className="text-[7px] text-amber-300 font-mono font-black border border-amber-400/30 px-1 py-0.5 rounded uppercase tracking-widest bg-amber-950/40">
+                                    {book.category}
+                                  </span>
+                                  {book.isUnlocked || isAdmin ? (
+                                    <span className="text-[7px] text-emerald-400 font-bold bg-emerald-950/50 px-1.5 py-0.5 rounded">✓ Open</span>
+                                  ) : (
+                                    <span className="text-[7px] text-amber-400 font-bold bg-amber-950/50 px-1.5 py-0.5 rounded">Locked</span>
+                                  )}
+                                </div>
+
+                                {/* Centered Graphic Symbol */}
+                                <div className="my-1 flex justify-center">
+                                  <div className="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/25 flex items-center justify-center text-xl shadow-inner group-hover:scale-110 transition-transform">
+                                    📜
+                                  </div>
+                                </div>
+
+                                {/* Book Title & Author */}
+                                <div className="space-y-1">
+                                  <h4 className="font-serif font-black text-[11px] sm:text-xs text-amber-100 group-hover:text-amber-300 transition line-clamp-2 leading-tight tracking-wide px-1">
+                                    {book.title}
+                                  </h4>
+                                  <p className="text-[8px] text-amber-400/70 font-medium truncate">by {book.author}</p>
+                                </div>
+                              </div>
+
+                              {/* Internet Archive style bottom count bar */}
+                              <div className="bg-amber-950/90 border-t border-amber-800/30 px-3 py-1.5 flex items-center gap-1.5 text-amber-200 text-[9px] font-bold tracking-wider shrink-0 pl-5">
+                                <span className="text-[10px]">📋</span>
+                                <span className="truncate">{charDisplay} అక్షరాలు • {book.chapters.length} Ch</span>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+
+                      {expandedFolderId === 'general' && filteredBooks.filter(b => b.folderId !== 'fol-talapatra').length === 0 && (
+                        <div className="col-span-full text-center py-16 text-slate-500 text-xs font-semibold">
                           సాధారణ గ్రంథాలయంలో గ్రంథాలు లేవు.
                         </div>
                       )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Folder 2: Palm Leaf Manuscripts (తాళపత్ర గ్రంథాలు) */}
-                <div className="bg-amber-50/50 border-2 border-amber-200 hover:border-amber-300 rounded-2xl shadow-xs transition-all overflow-hidden shrink-0">
-                  {/* Folder Header - Touch to expand / collapse */}
-                  <div 
-                    onClick={() => setIsTalapatraFolderOpen(!isTalapatraFolderOpen)}
-                    className="p-3.5 sm:p-4 bg-gradient-to-r from-amber-100/90 to-orange-100/80 cursor-pointer flex items-center justify-between gap-2 select-none hover:bg-amber-100 transition"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="text-xl shrink-0">📜</span>
-                      <div className="min-w-0">
-                        <h4 className="text-sm sm:text-base font-black text-slate-900 truncate">
-                          తాళపత్ర గ్రంథాలు (Palm Leaf Manuscripts)
-                        </h4>
-                        <p className="text-[10px] text-slate-600 font-medium">
-                          {isTalapatraFolderOpen ? 'గ్రంథాలను దాచడానికి టచ్ చేయండి' : 'గ్రంథాలను చూడటానికి ఇక్కడ టచ్ చేయండి'}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="bg-amber-200 text-amber-950 border border-amber-300 text-[11px] px-2.5 py-0.5 rounded-full font-black">
-                        {filteredBooks.filter(b => b.folderId === 'fol-talapatra').length} గ్రంథాలు
-                      </span>
-                      <div className="p-1 rounded-full bg-white/70 text-slate-700">
-                        {isTalapatraFolderOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Manuscripts Gallery - Archive.org Style Grid */}
-                  {isTalapatraFolderOpen && (
-                    <div className="p-3 sm:p-4 bg-amber-50/30 border-t border-amber-200">
-                      {filteredBooks.filter(b => b.folderId === 'fol-talapatra').length > 0 ? (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-3.5 sm:gap-4">
-                          {filteredBooks.filter(b => b.folderId === 'fol-talapatra').map((book) => (
-                            <div
-                              key={book.id}
-                              onClick={() => setSelectedBook(book)}
-                              className="group bg-white rounded-xl border-2 border-amber-200 hover:border-amber-400 p-2 sm:p-2.5 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between"
-                            >
-                              {/* Manuscript Poster Cover */}
-                              <div className="relative aspect-[3/4] w-full rounded-lg overflow-hidden bg-amber-950 shadow-inner flex mb-2">
-                                <div className="w-2 h-full bg-gradient-to-r from-amber-950 via-amber-800 to-amber-900/60 shadow-inner shrink-0 border-r border-amber-600/40" />
-                                <img
-                                  src={book.coverImage || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=300&q=80'}
-                                  alt={book.title}
-                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent pointer-events-none" />
-
-                                {/* Category Tag */}
-                                <span className="absolute top-1.5 left-2.5 text-[8px] bg-black/70 text-amber-300 px-1.5 py-0.5 rounded font-mono font-bold uppercase tracking-wider backdrop-blur-xs">
-                                  {book.category}
-                                </span>
-
-                                {/* Status Tag */}
-                                <div className="absolute top-1.5 right-1.5">
-                                  {book.isUnlocked ? (
-                                    <span className="text-[8px] bg-emerald-600/90 text-white px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5 shadow-xs">
-                                      <Check className="w-2 h-2" /> అన్‌లాక్డ్
-                                    </span>
-                                  ) : (
-                                    <span className="text-[8px] bg-amber-600/90 text-white px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5 shadow-xs">
-                                      <Lock className="w-2 h-2" /> లాక్డ్
-                                    </span>
-                                  )}
-                                </div>
-
-                                {/* Content Type Tag */}
-                                {book.contentType === 'audio' && (
-                                  <span className="absolute bottom-1.5 left-2.5 text-[8px] bg-amber-500 text-slate-950 font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-xs">
-                                    <Mic className="w-2 h-2" /> వాయిస్
-                                  </span>
-                                )}
-                                {book.contentType === 'video' && (
-                                  <span className="absolute bottom-1.5 left-2.5 text-[8px] bg-rose-600 text-white font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-xs">
-                                    <Film className="w-2 h-2" /> వీడియో
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* Title and Author */}
-                              <div className="space-y-0.5 mb-2">
-                                <h5 className="font-serif font-black text-xs sm:text-sm text-slate-900 leading-tight group-hover:text-amber-600 transition-colors line-clamp-2" title={book.title}>
-                                  {book.title}
-                                </h5>
-                                <p className="text-[10px] text-slate-600 truncate font-medium">
-                                  రచయిత: {book.author}
-                                </p>
-                              </div>
-
-                              {/* Action Buttons */}
-                              <div className="pt-2 border-t border-amber-100 flex flex-col gap-1.5">
-                                <div className="grid grid-cols-2 gap-1 text-[9px]">
-                                  {/* Listen Button */}
-                                  <button
-                                    type="button"
-                                    onClick={(e) => handlePlayBookAudio(book, e)}
-                                    className={`w-full py-1 px-1 rounded-md font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
-                                      currentlySpeakingBookId === book.id
-                                        ? 'bg-amber-500 text-slate-950 border border-orange-400 animate-pulse'
-                                        : 'bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300'
-                                    }`}
-                                  >
-                                    {currentlySpeakingBookId === book.id ? (
-                                      <>
-                                        <VolumeX className="w-2.5 h-2.5" />
-                                        <span>ఆపు</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Volume2 className="w-2.5 h-2.5" />
-                                        <span>వినండి</span>
-                                      </>
-                                    )}
-                                  </button>
-
-                                  {/* Sample or Read Button */}
-                                  {localStorage.getItem('library_is_sample_enabled') !== 'false' && !(book.isUnlocked || isAdmin) ? (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => handleOpenSampleReader(book, e)}
-                                      className="w-full py-1 px-1 rounded-md font-bold bg-sky-100 hover:bg-sky-200 text-sky-950 border border-sky-300 transition flex items-center justify-center gap-1 cursor-pointer"
-                                    >
-                                      <BookOpen className="w-2.5 h-2.5" />
-                                      <span>శాంపిల్</span>
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (book.isUnlocked || isAdmin) {
-                                          onOpenReader(book);
-                                        } else {
-                                          handleOpenPayment(book, 'read');
-                                        }
-                                      }}
-                                      className="w-full py-1 px-1 rounded-md font-bold bg-emerald-100 hover:bg-emerald-200 text-emerald-950 border border-emerald-300 transition flex items-center justify-center gap-1 cursor-pointer"
-                                    >
-                                      <BookOpenCheck className="w-2.5 h-2.5" />
-                                      <span>చదవండి</span>
-                                    </button>
-                                  )}
-                                </div>
-
-                                {/* Download or Full Read action */}
-                                {book.isUnlocked || isAdmin ? (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleDownloadBook(book);
-                                    }}
-                                    className="w-full py-1 px-1 rounded-md font-bold bg-amber-200 hover:bg-amber-300 text-amber-950 border border-amber-300 text-[10px] transition flex items-center justify-center gap-1 cursor-pointer"
-                                  >
-                                    <Download className="w-2.5 h-2.5" />
-                                    <span>డౌన్‌లోడ్</span>
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleOpenPayment(book, 'read');
-                                    }}
-                                    className="w-full py-1 px-1 rounded-md font-bold bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-[10px] transition flex items-center justify-center gap-1 shadow-xs cursor-pointer"
-                                  >
-                                    <QrCode className="w-2.5 h-2.5" />
-                                    <span>చదవండి (₹{readPriceINR})</span>
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-10 text-slate-500 text-xs font-semibold">
+                      
+                      {expandedFolderId === 'talapatra' && filteredBooks.filter(b => b.folderId === 'fol-talapatra').length === 0 && (
+                        <div className="col-span-full text-center py-16 text-slate-500 text-xs font-semibold">
                           తాళపత్ర గ్రంథాలయంలో గ్రంథాలు లేవు.
                         </div>
                       )}
                     </div>
-                  )}
-                </div>
-
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1923,27 +1760,64 @@ Downloaded from All In One Library Hub
             </button>
 
             {/* Category / Cover */}
-            <span className="text-[10px] font-bold uppercase tracking-widest text-orange-400 font-mono block mb-2">
-              {selectedBook.category}
-            </span>
+            <div className="flex gap-4 mb-4">
+              {/* Cover Thumbnail */}
+              <div className={`w-20 h-28 rounded-lg shrink-0 shadow-md relative overflow-hidden flex flex-col justify-between p-2 select-none ${
+                selectedBook.folderId === 'fol-talapatra' 
+                  ? 'bg-gradient-to-b from-amber-900 to-stone-950 border border-amber-300/40' 
+                  : 'bg-gradient-to-b from-indigo-950 to-slate-950 border border-orange-200/40'
+              }`}>
+                <div className={`absolute top-0 left-0 w-1 h-full border-r ${
+                  selectedBook.folderId === 'fol-talapatra' ? 'bg-amber-500/30 border-amber-600/10' : 'bg-orange-400/30 border-orange-500/10'
+                }`} />
+                <span className="text-[6px] text-amber-200 font-mono font-bold uppercase tracking-widest block text-center">
+                  {selectedBook.category}
+                </span>
+                <span className="text-xl block text-center">
+                  {selectedBook.folderId === 'fol-talapatra' ? '📜' : '📖'}
+                </span>
+                <span className="text-[6px] text-slate-400 font-sans block text-center leading-none truncate">
+                  {selectedBook.title}
+                </span>
+              </div>
 
-            {/* Title / Author */}
-            <h3 className="text-lg font-serif font-bold text-slate-900 tracking-wide mb-1 leading-snug">
-              {selectedBook.title}
-            </h3>
-            <p className="text-xs text-slate-800 mb-4">by {selectedBook.author}</p>
+              {/* Title / Author and Character Stats */}
+              <div className="flex-1 min-w-0 flex flex-col justify-center">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-orange-400 font-mono block mb-1">
+                  {selectedBook.category}
+                </span>
+                <h3 className="text-base font-serif font-black text-slate-950 tracking-wide leading-tight mb-1">
+                  {selectedBook.title}
+                </h3>
+                <p className="text-xs text-slate-800 font-medium">by {selectedBook.author}</p>
+                
+                {/* Visual Stats Bar inside details */}
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  <span className="text-[9px] font-black bg-orange-200/60 text-orange-950 border border-orange-300 px-2 py-0.5 rounded-md">
+                    📝 {getBookCharsCount(selectedBook).toLocaleString()} అక్షరాలు
+                  </span>
+                  <span className="text-[9px] font-black bg-amber-200/60 text-amber-950 border border-amber-300 px-2 py-0.5 rounded-md">
+                    📖 {selectedBook.chapters.length} అధ్యాయాలు
+                  </span>
+                </div>
+              </div>
+            </div>
 
             <div className="h-px bg-orange-200 mb-4" />
 
             {/* Metadata & Cost info */}
-            <div className="grid grid-cols-2 gap-3 mb-5 text-xs font-mono">
-              <div className="bg-orange-100 p-2.5 rounded-lg border border-orange-300">
-                <span className="text-[9px] text-slate-700/60 block uppercase font-sans">Acquisition Cost</span>
-                <span className="text-slate-900 font-bold text-sm">{selectedBook.costToUnlock} Credits</span>
+            <div className="grid grid-cols-3 gap-2 mb-4 text-[10px] font-mono">
+              <div className="bg-orange-100 p-2 rounded-lg border border-orange-300 text-center">
+                <span className="text-[8px] text-slate-700/60 block uppercase font-sans">అక్షరాలు (Chars)</span>
+                <span className="text-slate-950 font-black text-xs">{getBookCharsCount(selectedBook).toLocaleString()}</span>
               </div>
-              <div className="bg-orange-100 p-2.5 rounded-lg border border-orange-300">
-                <span className="text-[9px] text-slate-700/60 block uppercase font-sans">Reading Rate</span>
-                <span className="text-slate-800 font-bold text-sm">{selectedBook.costPerMinute} cr/min</span>
+              <div className="bg-orange-100 p-2 rounded-lg border border-orange-300 text-center">
+                <span className="text-[8px] text-slate-700/60 block uppercase font-sans">పదాలు (Words)</span>
+                <span className="text-slate-950 font-black text-xs">{getBookWordsCount(selectedBook).toLocaleString()}</span>
+              </div>
+              <div className="bg-orange-100 p-2 rounded-lg border border-orange-300 text-center">
+                <span className="text-[8px] text-slate-700/60 block uppercase font-sans">రేట్ (Rate)</span>
+                <span className="text-slate-950 font-black text-xs">{selectedBook.costPerMinute} Cr/m</span>
               </div>
             </div>
 

@@ -3,25 +3,51 @@ import path from 'path';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import { GoogleGenAI, Type } from '@google/genai';
-import { createServer as createViteServer } from 'vite';
 
 dotenv.config();
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
+// Health Check Endpoint for Cloud Run deployment checks
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// PWA System Association Control Endpoint
+app.get('/api/app-control', (req, res) => {
+  res.json({
+    pwaVersion: '1.0.0',
+    maintenanceMode: false,
+    activeFeatureFlags: {}
+  });
+});
+
 const PORT = 3000;
 
-// Initialize Google GenAI on the server side
+// Initialize Google GenAI on the server side lazily to prevent crashing if GEMINI_API_KEY is not defined at startup.
 // Note: User-Agent set to 'aistudio-build' is required for AI Studio telemetry.
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    },
-  },
-});
+let _aiInstance: GoogleGenAI | null = null;
+function getAI(): GoogleGenAI {
+  if (!_aiInstance) {
+    const apiKey = process.env.GEMINI_API_KEY || 'DUMMY_KEY_TO_PREVENT_STARTUP_CRASH';
+    _aiInstance = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
+  }
+  return _aiInstance;
+}
+
+const ai = {
+  get models() {
+    return getAI().models;
+  }
+} as any;
 
 function parseBase64DataUri(dataUri: string) {
   const matches = dataUri.match(/^data:([^;]+);base64,(.+)$/);
@@ -389,10 +415,7 @@ app.get('/api/codebase-pdf', (req, res) => {
     'src/components/LibraryModal.tsx',
     'src/components/PricingPanel.tsx',
     'src/components/PaymentModal.tsx',
-    'src/components/WriterRegistrationModal.tsx',
-    'Dockerfile',
-    '.dockerignore',
-    'docker-compose.yml'
+    'src/components/WriterRegistrationModal.tsx'
   ];
 
   const filesData = [];
@@ -579,6 +602,7 @@ app.get('/api/codebase-pdf', (req, res) => {
 // Setup Vite Dev Server / Static Asset pipeline
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',

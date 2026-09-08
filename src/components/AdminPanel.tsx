@@ -1232,11 +1232,11 @@ export default function AdminPanel({
                       <span>సాధారణ గ్రంథాలయం (General Books Management)</span>
                     </h4>
                     
-                    <div className="space-y-1.5 max-h-[600px] overflow-y-auto pr-1">
+                    <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
                       {books.filter(b => b.folderId !== 'fol-talapatra').map(book => (
                         <div 
                           key={book.id}
-                          className="bg-white border-2 border-orange-200 hover:border-orange-300 rounded-xl py-1.5 px-2.5 shadow-xs transition"
+                          className="bg-white border-2 border-orange-200 hover:border-orange-300 rounded-xl p-3 shadow-xs transition"
                         >
                           {editingBookId === book.id ? (
                             <div className="space-y-2.5 text-xs">
@@ -1299,36 +1299,29 @@ export default function AdminPanel({
                               </div>
                             </div>
                           ) : (
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-3 overflow-hidden flex-1 min-w-0">
-                                {/* Realistic 3D Book Cover with Spine */}
-                                <div className="relative w-9 h-12 shrink-0 rounded-r shadow-md overflow-hidden border-r border-t border-b border-amber-900/40 bg-amber-950 flex">
-                                  {/* Left book spine effect */}
-                                  <div className="w-1.5 h-full bg-gradient-to-r from-amber-950 via-amber-800 to-amber-900/60 shadow-inner shrink-0 border-r border-amber-600/40" />
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-center gap-3 overflow-hidden">
+                                <div className="w-10 h-12 bg-slate-100 rounded overflow-hidden shrink-0 border border-slate-200">
                                   <img 
                                     src={book.coverImage || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=200&q=80'} 
                                     alt={book.title}
-                                    className="w-full h-full object-cover rounded-r-xs"
+                                    className="w-full h-full object-cover"
                                   />
-                                  {/* Realistic page edges gloss */}
-                                  <div className="absolute inset-0 bg-gradient-to-tr from-black/20 via-transparent to-white/15 pointer-events-none" />
                                 </div>
-                                <div className="overflow-hidden min-w-0 flex-1">
-                                  <div className="flex items-center gap-2">
-                                    <h5 className="text-xs font-black text-slate-900 truncate">{book.title}</h5>
-                                    <span className="text-[9px] bg-amber-100 border border-amber-300 text-amber-900 px-1.5 py-0.2 rounded-md font-mono font-black shrink-0">
-                                      {book.costToUnlock} Cr
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-2 text-[10px] text-slate-700 mt-0.5">
-                                    <span className="truncate font-medium">రచయిత: {book.author}</span>
-                                    <span className="text-[9px] bg-blue-100 border border-blue-200 text-blue-700 px-1.5 py-0.2 rounded-md font-bold shrink-0">
+                                <div className="overflow-hidden">
+                                  <h5 className="text-xs font-extrabold text-black truncate">{book.title}</h5>
+                                  <p className="text-[11px] text-slate-700 truncate">రచయిత: {book.author}</p>
+                                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                    <span className="text-[9px] bg-blue-100 border border-blue-200 text-blue-700 px-1.5 py-0.5 rounded-full font-bold">
                                       {book.category}
+                                    </span>
+                                    <span className="text-[9px] bg-amber-100 border border-amber-200 text-amber-800 px-1.5 py-0.5 rounded-full font-mono font-bold">
+                                      {book.costToUnlock} Credits
                                     </span>
                                   </div>
                                 </div>
                               </div>
-                              <div className="flex items-center gap-1.5 shrink-0">
+                              <div className="flex flex-col gap-1.5 shrink-0">
                                 <button
                                   onClick={() => {
                                     setEditingBookId(book.id);
@@ -1336,7 +1329,7 @@ export default function AdminPanel({
                                     setEditBookAuthor(book.author);
                                     setEditBookCost(book.costToUnlock);
                                   }}
-                                  className="bg-orange-100 hover:bg-orange-200 text-black border border-orange-300 rounded-md px-2.5 py-1 text-[10px] font-black transition cursor-pointer shadow-2xs"
+                                  className="bg-orange-100 hover:bg-orange-200 text-black border border-orange-300 rounded-lg px-2.5 py-1 text-[10px] font-black transition cursor-pointer"
                                 >
                                   ఎడిట్ (Edit)
                                 </button>
@@ -1348,7 +1341,7 @@ export default function AdminPanel({
                                       setTimeout(() => setNotification(null), 3000);
                                     }
                                   }}
-                                  className="bg-rose-50 hover:bg-rose-500 text-rose-600 hover:text-white border border-rose-200 hover:border-rose-500 rounded-md px-2.5 py-1 text-[10px] font-black transition cursor-pointer shadow-2xs"
+                                  className="bg-rose-50 hover:bg-rose-500 text-rose-600 hover:text-white border border-rose-200 hover:border-rose-500 rounded-lg px-2.5 py-1 text-[10px] font-black transition cursor-pointer"
                                   id={`delete-book-btn-${book.id}`}
                                 >
                                   డిలీట్ (Delete)
@@ -1361,9 +1354,9 @@ export default function AdminPanel({
                                       setTimeout(() => setNotification(null), 3000);
                                     }
                                   }}
-                                  className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-md px-2.5 py-1 text-[10px] font-black transition cursor-pointer shadow-2xs"
+                                  className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-lg px-2.5 py-1 text-[10px] font-black transition cursor-pointer"
                                 >
-                                  📜 తాళపత్రం
+                                  📜 తాళపత్రానికి మార్చు
                                 </button>
                               </div>
                             </div>
@@ -1385,11 +1378,11 @@ export default function AdminPanel({
                       <span>తాళపత్ర గ్రంథాలు (Palm Leaf Manuscripts Management)</span>
                     </h4>
                     
-                    <div className="space-y-1.5 max-h-[600px] overflow-y-auto pr-1">
+                    <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
                       {books.filter(b => b.folderId === 'fol-talapatra').map(book => (
                         <div 
                           key={book.id}
-                          className="bg-white border-2 border-amber-200 hover:border-amber-300 rounded-xl py-1.5 px-2.5 shadow-xs transition"
+                          className="bg-white border-2 border-amber-200 hover:border-amber-300 rounded-xl p-3 shadow-xs transition"
                         >
                           {editingBookId === book.id ? (
                             <div className="space-y-2.5 text-xs">
@@ -1452,35 +1445,29 @@ export default function AdminPanel({
                               </div>
                             </div>
                           ) : (
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-3 overflow-hidden flex-1 min-w-0">
-                                {/* Realistic 3D Palm Manuscript / Book Cover */}
-                                <div className="relative w-9 h-12 shrink-0 rounded-r shadow-md overflow-hidden border-r border-t border-b border-amber-900/50 bg-amber-950 flex">
-                                  {/* Left spine effect */}
-                                  <div className="w-1.5 h-full bg-gradient-to-r from-amber-950 via-amber-800 to-amber-900/60 shadow-inner shrink-0 border-r border-amber-600/40" />
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-center gap-3 overflow-hidden">
+                                <div className="w-10 h-12 bg-slate-100 rounded overflow-hidden shrink-0 border border-slate-200">
                                   <img 
                                     src={book.coverImage || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=200&q=80'} 
                                     alt={book.title}
-                                    className="w-full h-full object-cover rounded-r-xs"
+                                    className="w-full h-full object-cover"
                                   />
-                                  <div className="absolute inset-0 bg-gradient-to-tr from-black/20 via-transparent to-amber-200/15 pointer-events-none" />
                                 </div>
-                                <div className="overflow-hidden min-w-0 flex-1">
-                                  <div className="flex items-center gap-2">
-                                    <h5 className="text-xs font-black text-slate-900 truncate">{book.title}</h5>
-                                    <span className="text-[9px] bg-emerald-100 border border-emerald-300 text-emerald-900 px-1.5 py-0.2 rounded-md font-mono font-black shrink-0">
-                                      {book.costToUnlock} Cr
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-2 text-[10px] text-slate-700 mt-0.5">
-                                    <span className="truncate font-medium">రచయిత: {book.author}</span>
-                                    <span className="text-[9px] bg-amber-100 border border-amber-300 text-amber-900 px-1.5 py-0.2 rounded-md font-bold shrink-0">
+                                <div className="overflow-hidden">
+                                  <h5 className="text-xs font-extrabold text-black truncate">{book.title}</h5>
+                                  <p className="text-[11px] text-slate-700 truncate">రచయిత: {book.author}</p>
+                                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                    <span className="text-[9px] bg-amber-100 border border-amber-200 text-amber-800 px-1.5 py-0.5 rounded-full font-bold">
                                       {book.category}
+                                    </span>
+                                    <span className="text-[9px] bg-emerald-100 border border-emerald-200 text-emerald-800 px-1.5 py-0.5 rounded-full font-mono font-bold">
+                                      {book.costToUnlock} Credits
                                     </span>
                                   </div>
                                 </div>
                               </div>
-                              <div className="flex items-center gap-1 shrink-0">
+                              <div className="flex flex-col gap-1.5 shrink-0">
                                 <button
                                   onClick={() => {
                                     setEditingBookId(book.id);
@@ -1488,7 +1475,7 @@ export default function AdminPanel({
                                     setEditBookAuthor(book.author);
                                     setEditBookCost(book.costToUnlock);
                                   }}
-                                  className="bg-amber-100 hover:bg-amber-200 text-black border border-amber-300 rounded-md px-2 py-0.5 text-[10px] font-black transition cursor-pointer"
+                                  className="bg-amber-100 hover:bg-amber-200 text-black border border-amber-300 rounded-lg px-2.5 py-1 text-[10px] font-black transition cursor-pointer"
                                 >
                                   ఎడిట్ (Edit)
                                 </button>
@@ -1500,7 +1487,7 @@ export default function AdminPanel({
                                       setTimeout(() => setNotification(null), 3000);
                                     }
                                   }}
-                                  className="bg-rose-50 hover:bg-rose-500 text-rose-600 hover:text-white border border-rose-200 hover:border-rose-500 rounded-md px-2 py-0.5 text-[10px] font-black transition cursor-pointer"
+                                  className="bg-rose-50 hover:bg-rose-500 text-rose-600 hover:text-white border border-rose-200 hover:border-rose-500 rounded-lg px-2.5 py-1 text-[10px] font-black transition cursor-pointer"
                                   id={`delete-book-btn-${book.id}`}
                                 >
                                   డిలీట్ (Delete)
@@ -1514,9 +1501,9 @@ export default function AdminPanel({
                                       setTimeout(() => setNotification(null), 3000);
                                     }
                                   }}
-                                  className="bg-blue-100 hover:bg-blue-200 text-blue-900 border border-blue-300 rounded-md px-2 py-0.5 text-[10px] font-black transition cursor-pointer"
+                                  className="bg-blue-100 hover:bg-blue-200 text-blue-900 border border-blue-300 rounded-lg px-2.5 py-1 text-[10px] font-black transition cursor-pointer"
                                 >
-                                  📁 సాధారణ లైబ్రరీ
+                                  📁 సాధారణ లైబ్రరీకి మార్చు
                                 </button>
                               </div>
                             </div>
