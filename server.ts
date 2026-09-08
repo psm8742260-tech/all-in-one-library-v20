@@ -23,7 +23,7 @@ app.get('/api/app-control', (req, res) => {
   });
 });
 
-const PORT = 3000;
+const PORT = process.env.PORT || 8080;
 
 // Initialize Google GenAI on the server side lazily to prevent crashing if GEMINI_API_KEY is not defined at startup.
 // Note: User-Agent set to 'aistudio-build' is required for AI Studio telemetry.
