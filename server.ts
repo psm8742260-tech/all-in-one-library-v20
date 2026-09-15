@@ -4,31 +4,34 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import { GoogleGenAI, Type } from '@google/genai';
 import { INITIAL_BOOKS } from './src/data/books.ts';
-import { DatabaseSync } from 'node:sqlite';
 
 dotenv.config();
 
-// Initialize native SQLite Database Synchronization (Node 22+)
-const db = new DatabaseSync(path.join(process.cwd(), 'library.db'));
+// Safe Database interface
+let db: any = null;
+let inMemoryBooks: any[] = [...INITIAL_BOOKS];
 
-// Create books table
-db.exec(`
-  CREATE TABLE IF NOT EXISTS books (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    author TEXT NOT NULL,
-    description TEXT,
-    category TEXT,
-    chapters TEXT NOT NULL,
-    costToUnlock INTEGER DEFAULT 0,
-    costPerMinute INTEGER DEFAULT 0,
-    coverUrl TEXT,
-    folderId TEXT
-  )
-`);
-
-// Seed database with initial books if empty
 try {
+  const { DatabaseSync } = require('node:sqlite');
+  db = new DatabaseSync(path.join(process.cwd(), 'library.db'));
+
+  // Create books table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS books (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      author TEXT NOT NULL,
+      description TEXT,
+      category TEXT,
+      chapters TEXT NOT NULL,
+      costToUnlock INTEGER DEFAULT 0,
+      costPerMinute INTEGER DEFAULT 0,
+      coverUrl TEXT,
+      folderId TEXT
+    )
+  `);
+
+  // Seed database with initial books if empty
   const rowCountQuery = db.prepare("SELECT COUNT(*) as count FROM books");
   const rowCountResult = rowCountQuery.get() as { count: number };
   if (rowCountResult && rowCountResult.count === 0) {
@@ -54,7 +57,8 @@ try {
     console.log("SQLite database seeded successfully with 308 initial books!");
   }
 } catch (err: any) {
-  console.error("Error checking or seeding SQLite database:", err.message);
+  console.warn("Native SQLite not available or error occurred, using in-memory books fallback:", err.message);
+  db = null;
 }
 
 const app = express();
@@ -491,23 +495,26 @@ Return the result in strictly formatted JSON conforming to the requested schema.
   }
 });
 
-// Endpoint: Get all books from SQLite
+// Endpoint: Get all books from SQLite (with memory fallback)
 app.get('/api/books', (req, res) => {
   try {
-    const stmt = db.prepare("SELECT * FROM books");
-    const rows = stmt.all() as any[];
-    const books = rows.map(r => ({
-      ...r,
-      chapters: JSON.parse(r.chapters)
-    }));
-    res.json(books);
+    if (db) {
+      const stmt = db.prepare("SELECT * FROM books");
+      const rows = stmt.all() as any[];
+      const books = rows.map(r => ({
+        ...r,
+        chapters: JSON.parse(r.chapters)
+      }));
+      return res.json(books);
+    }
+    return res.json(inMemoryBooks);
   } catch (error: any) {
     console.error('Error fetching books from SQLite:', error.message);
-    res.status(500).json({ error: 'Internal Server Error', details: error.message });
+    return res.json(inMemoryBooks);
   }
 });
 
-// Endpoint: Insert/Update book in SQLite
+// Endpoint: Insert/Update book in SQLite (with memory fallback)
 app.post('/api/books', (req, res) => {
   try {
     const book = req.body;
@@ -515,50 +522,63 @@ app.post('/api/books', (req, res) => {
       return res.status(400).json({ error: 'Book ID, title, and author are required' });
     }
 
-    const insertStmt = db.prepare(`
-      INSERT INTO books (id, title, author, description, category, chapters, costToUnlock, costPerMinute, coverUrl, folderId)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        title=excluded.title,
-        author=excluded.author,
-        description=excluded.description,
-        category=excluded.category,
-        chapters=excluded.chapters,
-        costToUnlock=excluded.costToUnlock,
-        costPerMinute=excluded.costPerMinute,
-        coverUrl=excluded.coverUrl,
-        folderId=excluded.folderId
-    `);
+    if (db) {
+      const insertStmt = db.prepare(`
+        INSERT INTO books (id, title, author, description, category, chapters, costToUnlock, costPerMinute, coverUrl, folderId)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          title=excluded.title,
+          author=excluded.author,
+          description=excluded.description,
+          category=excluded.category,
+          chapters=excluded.chapters,
+          costToUnlock=excluded.costToUnlock,
+          costPerMinute=excluded.costPerMinute,
+          coverUrl=excluded.coverUrl,
+          folderId=excluded.folderId
+      `);
 
-    insertStmt.run(
-      book.id,
-      book.title,
-      book.author,
-      book.description || '',
-      book.category || '',
-      JSON.stringify(book.chapters || []),
-      book.costToUnlock || 0,
-      book.costPerMinute || 0,
-      book.coverUrl || '',
-      book.folderId || ''
-    );
+      insertStmt.run(
+        book.id,
+        book.title,
+        book.author,
+        book.description || '',
+        book.category || '',
+        JSON.stringify(book.chapters || []),
+        book.costToUnlock || 0,
+        book.costPerMinute || 0,
+        book.coverUrl || '',
+        book.folderId || ''
+      );
+    } else {
+      const idx = inMemoryBooks.findIndex(b => b.id === book.id);
+      if (idx >= 0) {
+        inMemoryBooks[idx] = { ...inMemoryBooks[idx], ...book };
+      } else {
+        inMemoryBooks.push(book);
+      }
+    }
 
-    res.json({ success: true, message: 'Book saved to SQLite successfully' });
+    res.json({ success: true, message: 'Book saved successfully' });
   } catch (error: any) {
-    console.error('Error saving book to SQLite:', error.message);
+    console.error('Error saving book:', error.message);
     res.status(500).json({ error: 'Internal Server Error', details: error.message });
   }
 });
 
-// Endpoint: Delete book from SQLite
+// Endpoint: Delete book from SQLite (with memory fallback)
 app.delete('/api/books/:id', (req, res) => {
   try {
     const { id } = req.params;
-    const deleteStmt = db.prepare("DELETE FROM books WHERE id = ?");
-    deleteStmt.run(id);
-    res.json({ success: true, message: 'Book deleted from SQLite successfully' });
+    if (db) {
+      const deleteStmt = db.prepare("DELETE FROM books WHERE id = ?");
+      deleteStmt.run(id);
+    } else {
+      inMemoryBooks = inMemoryBooks.filter(b => b.id !== id);
+    }
+    res.json({ success: true, message: 'Book deleted successfully' });
   } catch (error: any) {
-    console.error('Error deleting book from SQLite:', error.message);
+    console.error('Error deleting book:', error.message);
     res.status(500).json({ error: 'Internal Server Error', details: error.message });
   }
 });
