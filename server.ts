@@ -3,8 +3,59 @@ import path from 'path';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import { GoogleGenAI, Type } from '@google/genai';
+import { INITIAL_BOOKS } from './src/data/books.ts';
+import { DatabaseSync } from 'node:sqlite';
 
 dotenv.config();
+
+// Initialize native SQLite Database Synchronization (Node 22+)
+const db = new DatabaseSync(path.join(process.cwd(), 'library.db'));
+
+// Create books table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS books (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    author TEXT NOT NULL,
+    description TEXT,
+    category TEXT,
+    chapters TEXT NOT NULL,
+    costToUnlock INTEGER DEFAULT 0,
+    costPerMinute INTEGER DEFAULT 0,
+    coverUrl TEXT,
+    folderId TEXT
+  )
+`);
+
+// Seed database with initial books if empty
+try {
+  const rowCountQuery = db.prepare("SELECT COUNT(*) as count FROM books");
+  const rowCountResult = rowCountQuery.get() as { count: number };
+  if (rowCountResult && rowCountResult.count === 0) {
+    console.log("Seeding SQLite database with 308 initial books...");
+    const insertStmt = db.prepare(`
+      INSERT INTO books (id, title, author, description, category, chapters, costToUnlock, costPerMinute, coverUrl, folderId)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const book of INITIAL_BOOKS) {
+      insertStmt.run(
+        book.id,
+        book.title,
+        book.author,
+        book.description || '',
+        book.category || '',
+        JSON.stringify(book.chapters || []),
+        book.costToUnlock || 0,
+        book.costPerMinute || 0,
+        book.coverUrl || '',
+        book.folderId || ''
+      );
+    }
+    console.log("SQLite database seeded successfully with 308 initial books!");
+  }
+} catch (err: any) {
+  console.error("Error checking or seeding SQLite database:", err.message);
+}
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -23,7 +74,7 @@ app.get('/api/app-control', (req, res) => {
   });
 });
 
-const PORT = process.env.PORT || 8080;
+const PORT = 3000;
 
 // Initialize Google GenAI on the server side lazily to prevent crashing if GEMINI_API_KEY is not defined at startup.
 // Note: User-Agent set to 'aistudio-build' is required for AI Studio telemetry.
@@ -193,9 +244,9 @@ Instructions:
       };
     });
 
-    // Generate response using gemini-flash-latest (more available model)
+    // Generate response using gemini-3.5-flash (more available model)
     const response = await ai.models.generateContent({
-      model: 'gemini-flash-latest',
+      model: 'gemini-3.5-flash',
       contents: [
         { role: 'user', parts: [{ text: systemPrompt }] },
         ...chatMessages
@@ -300,7 +351,7 @@ Output format must be JSON conforming to the requested schema.`;
     }
 
     const response = await ai.models.generateContent({
-      model: 'gemini-flash-latest',
+      model: 'gemini-3.5-flash',
       contents: generationPrompt,
       config: {
         responseMimeType: 'application/json',
@@ -369,7 +420,7 @@ Also extract its description and medicinal uses in Telugu.
 Return the result in strictly formatted JSON conforming to the requested schema.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-flash-latest',
+      model: 'gemini-3.5-flash',
       contents: [imagePart, { text: prompt }],
       config: {
         responseMimeType: 'application/json',
@@ -401,6 +452,164 @@ Return the result in strictly formatted JSON conforming to the requested schema.
     res.json(JSON.parse(jsonText));
   } catch (error: any) {
     console.error('Error in /api/identify-plant:', error);
+    res.status(500).json({ error: 'Internal Server Error', details: error.message });
+  }
+});
+
+// Endpoint: Get all books from SQLite
+app.get('/api/books', (req, res) => {
+  try {
+    const stmt = db.prepare("SELECT * FROM books");
+    const rows = stmt.all() as any[];
+    const books = rows.map(r => ({
+      ...r,
+      chapters: JSON.parse(r.chapters)
+    }));
+    res.json(books);
+  } catch (error: any) {
+    console.error('Error fetching books from SQLite:', error.message);
+    res.status(500).json({ error: 'Internal Server Error', details: error.message });
+  }
+});
+
+// Endpoint: Insert/Update book in SQLite
+app.post('/api/books', (req, res) => {
+  try {
+    const book = req.body;
+    if (!book.id || !book.title || !book.author) {
+      return res.status(400).json({ error: 'Book ID, title, and author are required' });
+    }
+
+    const insertStmt = db.prepare(`
+      INSERT INTO books (id, title, author, description, category, chapters, costToUnlock, costPerMinute, coverUrl, folderId)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        title=excluded.title,
+        author=excluded.author,
+        description=excluded.description,
+        category=excluded.category,
+        chapters=excluded.chapters,
+        costToUnlock=excluded.costToUnlock,
+        costPerMinute=excluded.costPerMinute,
+        coverUrl=excluded.coverUrl,
+        folderId=excluded.folderId
+    `);
+
+    insertStmt.run(
+      book.id,
+      book.title,
+      book.author,
+      book.description || '',
+      book.category || '',
+      JSON.stringify(book.chapters || []),
+      book.costToUnlock || 0,
+      book.costPerMinute || 0,
+      book.coverUrl || '',
+      book.folderId || ''
+    );
+
+    res.json({ success: true, message: 'Book saved to SQLite successfully' });
+  } catch (error: any) {
+    console.error('Error saving book to SQLite:', error.message);
+    res.status(500).json({ error: 'Internal Server Error', details: error.message });
+  }
+});
+
+// Endpoint: Delete book from SQLite
+app.delete('/api/books/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleteStmt = db.prepare("DELETE FROM books WHERE id = ?");
+    deleteStmt.run(id);
+    res.json({ success: true, message: 'Book deleted from SQLite successfully' });
+  } catch (error: any) {
+    console.error('Error deleting book from SQLite:', error.message);
+    res.status(500).json({ error: 'Internal Server Error', details: error.message });
+  }
+});
+
+// Endpoint: DeepSeek/Gemini Agent Chat for SQLite management
+app.post('/api/agent/chat', async (req, res) => {
+  try {
+    const { messages, currentLanguage } = req.body;
+    if (!messages || !Array.isArray(messages)) {
+      return res.status(400).json({ error: 'Messages array is required' });
+    }
+
+    // Fetch all books from SQLite as metadata context
+    const stmt = db.prepare("SELECT id, title, author, description, category, costToUnlock, costPerMinute, folderId FROM books");
+    const books = stmt.all() as any[];
+
+    const systemPrompt = `You are the DeepSeek-powered Core Database Agent for the "All in One Library" system running on the PHRS Server.
+Your job is to manage, search, query, and chat with the admin about the central SQLite database containing ${books.length} books.
+
+[Database Context]
+Here are all the books currently stored in our SQLite database:
+${JSON.stringify(books, null, 2)}
+
+[Operational Protocol]
+- If the user/admin asks you to find, search, or summarize books, use the provided database context to find accurate results.
+- If they ask to add, edit, or modify any database record, instruct them on how to use the admin UI to trigger saving or explain that the SQLite DB is fully synced.
+- Always respond in a polite, respectful tone in Telugu or their selected language, and address the user as "అడ్మిన్ గారు" (Admin Garu).
+- Be extremely accurate and helpful about the database contents.`;
+
+    const apiKey = process.env.DEEPSEEK_API_KEY || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: 'No API key configured on the server' });
+    }
+
+    const isDeepSeek = !!process.env.DEEPSEEK_API_KEY;
+    
+    if (isDeepSeek) {
+      console.log('Using DeepSeek for Agent Chat...');
+      const baseUrl = 'https://api.deepseek.com/chat/completions';
+      const dsMessages = [
+        { role: 'system', content: systemPrompt },
+        ...messages.map(msg => ({
+          role: msg.sender === 'user' ? 'user' : 'assistant',
+          content: msg.text
+        }))
+      ];
+
+      const dsResponse = await fetch(baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          messages: dsMessages
+        })
+      });
+
+      if (!dsResponse.ok) {
+        const errText = await dsResponse.text();
+        throw new Error(`DeepSeek Agent API error: ${dsResponse.status} ${errText}`);
+      }
+
+      const dsData: any = await dsResponse.json();
+      const reply = dsData.choices?.[0]?.message?.content || '';
+      return res.json({ reply });
+    } else {
+      console.log('DeepSeek key not found, falling back to Gemini for Agent Chat...');
+      const chatMessages = messages.map(msg => ({
+        role: msg.sender === 'user' ? 'user' : 'model',
+        parts: [{ text: msg.text }]
+      }));
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.5-flash',
+        contents: [
+          { role: 'user', parts: [{ text: systemPrompt }] },
+          ...chatMessages
+        ]
+      });
+
+      return res.json({ reply: response.text });
+    }
+  } catch (error: any) {
+    console.error('Error in /api/agent/chat:', error);
     res.status(500).json({ error: 'Internal Server Error', details: error.message });
   }
 });

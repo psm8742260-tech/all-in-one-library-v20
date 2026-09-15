@@ -179,6 +179,23 @@ export default function App() {
     }
   }, [books]);
 
+  // Load books from server-side SQLite database on startup
+  useEffect(() => {
+    fetch('/api/books')
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to load books from server');
+        return res.json();
+      })
+      .then(serverBooks => {
+        if (Array.isArray(serverBooks) && serverBooks.length > 0) {
+          setBooksState(serverBooks.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'accent', numeric: true })));
+        }
+      })
+      .catch(err => {
+        console.warn('Could not load books from SQLite server, using local fallback:', err.message);
+      });
+  }, []);
+
   // Initialize DeepSeek settings with default working key if not present
   useEffect(() => {
     try {
@@ -279,13 +296,29 @@ export default function App() {
   };
 
   // Handler: Admin Add Book directly to library
-  const handleAddBook = (newBook: Book) => {
+  const handleAddBook = async (newBook: Book) => {
     setBooks(prev => [newBook, ...prev]);
+    try {
+      await fetch('/api/books', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newBook)
+      });
+    } catch (e) {
+      console.error('Failed to sync added book with SQLite database:', e);
+    }
   };
 
   // Handler: Admin Delete Book from library
-  const handleDeleteBook = (bookId: string) => {
+  const handleDeleteBook = async (bookId: string) => {
     setBooks(prev => prev.filter(b => b.id !== bookId));
+    try {
+      await fetch(`/api/books/${bookId}`, {
+        method: 'DELETE'
+      });
+    } catch (e) {
+      console.error('Failed to sync deleted book with SQLite database:', e);
+    }
   };
 
   // Handle Writer Application with localStorage permanent persistence
