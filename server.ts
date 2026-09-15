@@ -193,9 +193,9 @@ Instructions:
       };
     });
 
-    // Generate response using gemini-3.6-flash (more available model)
+    // Generate response using gemini-flash-latest (more available model)
     const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
+      model: 'gemini-flash-latest',
       contents: [
         { role: 'user', parts: [{ text: systemPrompt }] },
         ...chatMessages
@@ -300,7 +300,7 @@ Output format must be JSON conforming to the requested schema.`;
     }
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
+      model: 'gemini-flash-latest',
       contents: generationPrompt,
       config: {
         responseMimeType: 'application/json',
@@ -369,7 +369,7 @@ Also extract its description and medicinal uses in Telugu.
 Return the result in strictly formatted JSON conforming to the requested schema.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
+      model: 'gemini-flash-latest',
       contents: [imagePart, { text: prompt }],
       config: {
         responseMimeType: 'application/json',
