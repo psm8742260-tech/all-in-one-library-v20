@@ -74,6 +74,7 @@ export interface Book {
   audioUrl?: string; // Direct audio playback URL or data URL
   videoUrl?: string; // Direct video playback URL or YouTube/MP4 URL
   coverImage?: string;
+  coverUrl?: string;
   chapters: Chapter[];
   costToUnlock: number; // Credit cost to purchase/unlock
   costPerMinute: number; // Cost to read per minute

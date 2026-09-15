@@ -43,10 +43,18 @@ export default function AdminPanel({
   // Check if current user is admin (e.g. psm8742260@gmail.com)
   const ADMIN_EMAIL = 'psm8742260@gmail.com';
   const ADMIN_SIM_EMAIL = 'sim_8466062260@sim-auth.library';
+  
+  const checkIsAdmin = (email: string) => {
+    const e = email.toLowerCase();
+    return e === ADMIN_EMAIL.toLowerCase() || 
+           e === ADMIN_SIM_EMAIL.toLowerCase() || 
+           e === '8466062260' || 
+           e === '+918466062260';
+  };
+
   const [adminAuthInput, setAdminAuthInput] = useState('');
   const [isAuthVerified, setIsAuthVerified] = useState<boolean>(
-    user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase() ||
-    user.email.toLowerCase() === ADMIN_SIM_EMAIL.toLowerCase()
+    checkIsAdmin(user.email)
   );
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -282,10 +290,10 @@ export default function AdminPanel({
   const handleVerifyAdmin = (e: React.FormEvent) => {
     e.preventDefault();
     if (
-      adminAuthInput.trim().toLowerCase() === ADMIN_EMAIL.toLowerCase() ||
+      checkIsAdmin(adminAuthInput.trim()) ||
       adminAuthInput.trim() === 'admin123' ||
       adminAuthInput.trim() === '6606' ||
-      user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()
+      checkIsAdmin(user.email)
     ) {
       setIsAuthVerified(true);
       setAuthError(null);

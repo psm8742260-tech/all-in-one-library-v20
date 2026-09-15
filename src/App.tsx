@@ -86,6 +86,31 @@ export default function App() {
         return { ...book, folderId, isUnlocked: false };
       });
     } else {
+      // Merge any new books from INITIAL_BOOKS that aren't in localStorage
+      const existingIds = new Set(loadedBooks.map(b => b.id));
+      const newInitialBooks = INITIAL_BOOKS.filter(b => !existingIds.has(b.id)).map(book => {
+        let folderId: string | undefined = undefined;
+        const desc = book.description || '';
+        const cat = book.category || '';
+        const title = book.title || '';
+        const isPalm = title.toLowerCase().includes('తాళపత్ర') || desc.toLowerCase().includes('తాళపత్ర') || cat.toLowerCase().includes('తాళపత్ర') ||
+                       title.toLowerCase().includes('talapatra') || desc.toLowerCase().includes('talapatra') || cat.toLowerCase().includes('talapatra') ||
+                       title.toLowerCase().includes('palm leaf') || desc.toLowerCase().includes('palm leaf') || cat.toLowerCase().includes('palm leaf') ||
+                       title.toLowerCase().includes('manuscript') || desc.toLowerCase().includes('manuscript') || cat.toLowerCase().includes('manuscript');
+        if (isPalm) {
+          folderId = 'fol-talapatra';
+        } else if (book.category.toLowerCase().includes('strategy') || book.category.toLowerCase().includes('philosophy')) {
+          folderId = 'fol-philosophy';
+        } else if (book.category.toLowerCase().includes('fiction') || book.category.toLowerCase().includes('fantasy')) {
+          folderId = 'fol-classics';
+        } else if (book.category.toLowerCase().includes('science')) {
+          folderId = 'fol-scifi';
+        }
+        return { ...book, folderId, isUnlocked: false };
+      });
+
+      loadedBooks = [...loadedBooks, ...newInitialBooks];
+
       // Force map existing cached books to the palm-leaf folder if matching keywords
       loadedBooks = loadedBooks.map(book => {
         const desc = book.description || '';
@@ -101,6 +126,36 @@ export default function App() {
         return book;
       });
     }
+
+    // Assign beautiful cover images to any books that are missing them
+    const generalCovers = [
+      "https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&q=80&w=800",
+      "https://images.unsplash.com/photo-1589829085413-56de8ae18c73?auto=format&fit=crop&q=80&w=800",
+      "https://images.unsplash.com/photo-1532012197267-da84d127e765?auto=format&fit=crop&q=80&w=800",
+      "https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&q=80&w=800",
+      "https://images.unsplash.com/photo-1456615074700-1dc12aa7364d?auto=format&fit=crop&q=80&w=800",
+      "https://images.unsplash.com/photo-1524578974057-797dbfb8da6d?auto=format&fit=crop&q=80&w=800",
+      "https://images.unsplash.com/photo-1535905557558-afc4877a26fc?auto=format&fit=crop&q=80&w=800"
+    ];
+    
+    const palmCovers = [
+      "https://images.unsplash.com/photo-1605648819582-7f7228812c6a?auto=format&fit=crop&q=80&w=800",
+      "https://images.unsplash.com/photo-1618222956795-3bc6368d4076?auto=format&fit=crop&q=80&w=800",
+      "https://images.unsplash.com/photo-1614031679261-1250109ae9e0?auto=format&fit=crop&q=80&w=800",
+      "https://images.unsplash.com/photo-1599839619722-39751411ea63?auto=format&fit=crop&q=80&w=800"
+    ];
+
+    loadedBooks = loadedBooks.map(book => {
+      if (!book.coverUrl) {
+        const hash = book.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+        if (book.folderId === 'fol-talapatra' || book.category?.includes('తాళపత్ర')) {
+          return { ...book, coverUrl: palmCovers[hash % palmCovers.length] };
+        } else {
+          return { ...book, coverUrl: generalCovers[hash % generalCovers.length] };
+        }
+      }
+      return book;
+    });
 
     return [...loadedBooks].sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'accent', numeric: true }));
   });

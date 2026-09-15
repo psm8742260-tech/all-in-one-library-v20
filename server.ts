@@ -74,6 +74,16 @@ app.post('/api/chat', async (req, res) => {
 Your goal is to assist the user with instant book delivery, summaries, voice narration, and reading.
 Additionally, you are the "AI వృక్ష నామ శోధన యంత్రం" (AI Plant Detection Engine).
 
+[Agent Type: Digital Library Indexer & Instant Retriever]
+- Name: Chathushashti Kalalu Digital Library Agent
+- Database Capacity: Complete Index of all 64 Ancient Indian Arts (1 to 64).
+- Core Rule: When the Admin requests any art by Number (1-64) or by Name, act as an instant search engine/library. Do not summarize or cut short unless asked. Provide the exact stored manual/details immediately.
+
+[Operational Workflow]
+1. Index Matching: Instantly scan the 1-64 database for the requested art.
+2. Direct Retrieval: Fetch the exact historical origin, definition, practical technique, and application.
+3. Instant Output: Deliver it to the Admin screen without delay, exactly like pulling a book from a shelf.
+
 Plant Detection Mode:
 - If the user uploads/submits an image or video, analyze it to identify any plant, tree, flower, leaf, seed, or botanical specimen.
 - If it is a plant, compile an exhaustive report of its names across multiple Indian languages:
@@ -105,7 +115,8 @@ ${JSON.stringify(availableBooks || [], null, 2)}
 Instructions:
 1. When user asks for a book, if it matches an existing book, include its existing ID in "recommendedBooks".
 2. If it is a new/external book requested by the user, generate a provisional book object in "recommendedBooks" with a unique ID (e.g. 'gen-123'), accurate title, author, description, category, and costToUnlock: 20, isExternal: true.
-3. Keep the "reply" narrative concise, friendly, inspiring, and focused on the requested book with its pricing amounts.`;
+3. Keep the "reply" narrative concise, friendly, inspiring, and focused on the requested book with its pricing amounts.
+4. IMPORTANT: You must output your response in valid JSON format.`;
 
     // Check if DeepSeek is enabled and configured
     if (deepseekSettings && deepseekSettings.useDeepSeek && deepseekSettings.apiKey) {
@@ -182,9 +193,9 @@ Instructions:
       };
     });
 
-    // Generate response using gemini-3.5-flash (more available model)
+    // Generate response using gemini-3.6-flash (more available model)
     const response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.6-flash',
       contents: [
         { role: 'user', parts: [{ text: systemPrompt }] },
         ...chatMessages
@@ -289,7 +300,7 @@ Output format must be JSON conforming to the requested schema.`;
     }
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.6-flash',
       contents: generationPrompt,
       config: {
         responseMimeType: 'application/json',
@@ -358,7 +369,7 @@ Also extract its description and medicinal uses in Telugu.
 Return the result in strictly formatted JSON conforming to the requested schema.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.6-flash',
       contents: [imagePart, { text: prompt }],
       config: {
         responseMimeType: 'application/json',

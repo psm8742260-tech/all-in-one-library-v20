@@ -61,7 +61,7 @@ export default function LibraryModal({
   if (!isOpen) return null;
 
   const t = TRANSLATIONS[currentLanguage];
-  const isAdmin = user.email.toLowerCase() === 'psm8742260@gmail.com' || user.email.toLowerCase() === 'sim_8466062260@sim-auth.library';
+  const isAdmin = user.email.toLowerCase() === 'psm8742260@gmail.com' || user.email.toLowerCase() === 'sim_8466062260@sim-auth.library' || user.email === '8466062260' || user.email === '+918466062260';
 
   return (
     <div className="fixed inset-0 bg-orange-900/20 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 z-50 animate-fade-in select-none">

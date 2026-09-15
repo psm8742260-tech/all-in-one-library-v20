@@ -68,7 +68,7 @@ export default function Dashboard({
   onRejectTree,
   onDeleteTree
 }: DashboardProps) {
-  const isAdmin = user.email.toLowerCase() === 'psm8742260@gmail.com' || user.email.toLowerCase() === 'sim_8466062260@sim-auth.library';
+  const isAdmin = user.email.toLowerCase() === 'psm8742260@gmail.com' || user.email.toLowerCase() === 'sim_8466062260@sim-auth.library' || user.email === '8466062260' || user.email === '+918466062260';
   const [activeTab, setActiveTab] = useState<'chat' | 'shelf'>('chat');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
@@ -1608,7 +1608,7 @@ Downloaded from All In One Library Hub
                     </div>
 
                     {/* Books Grid */}
-                    <div className="flex-1 overflow-y-auto pr-1 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 pb-4">
+                    <div className="flex-1 overflow-y-auto p-1 pt-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 pb-12">
                       {expandedFolderId === 'general' ? (
                         filteredBooks.filter(b => b.folderId !== 'fol-talapatra').map((book, index) => {
                           const charCount = getBookCharsCount(book);
@@ -1617,13 +1617,20 @@ Downloaded from All In One Library Hub
                             <div 
                               key={book.id}
                               onClick={() => setSelectedBook(book)}
-                              className="flex flex-col bg-gradient-to-b from-indigo-950 via-slate-900 to-slate-950 rounded-xl cursor-pointer transition border border-orange-200/40 hover:border-orange-400 group shadow-lg hover:-translate-y-1 relative overflow-hidden select-none h-60"
+                              className="flex flex-col bg-slate-950 rounded-xl cursor-pointer transition border border-orange-200/40 hover:border-orange-400 group shadow-lg hover:-translate-y-1 relative overflow-hidden select-none h-60"
                             >
+                              {book.coverUrl ? (
+                                <img src={book.coverUrl} referrerPolicy="no-referrer" alt="" className="absolute inset-0 w-full h-full object-cover opacity-50 group-hover:opacity-70 group-hover:scale-110 transition-all duration-700" />
+                              ) : (
+                                <div className="absolute inset-0 w-full h-full bg-gradient-to-b from-indigo-950 via-slate-900 to-slate-950" />
+                              )}
+                              <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/60 to-transparent pointer-events-none" />
+
                               {/* Book spine line effect */}
-                              <div className="absolute top-0 left-0 w-1.5 h-full bg-orange-400/40 border-r border-orange-500/20" />
+                              <div className="absolute top-0 left-0 w-1.5 h-full bg-orange-400/40 border-r border-orange-500/20 z-10" />
                               
                               {/* Cover Main Content */}
-                              <div className="flex-1 p-3 flex flex-col justify-between text-center pl-5 relative z-10">
+                              <div className="flex-1 p-3 flex flex-col justify-between text-center pl-5 relative z-20">
                                 {/* Top Badge */}
                                 <div className="flex justify-between items-center">
                                   <span className="text-[7px] text-orange-300 font-mono font-black border border-orange-400/30 px-1 py-0.5 rounded uppercase tracking-widest bg-orange-950/40">
@@ -1668,13 +1675,20 @@ Downloaded from All In One Library Hub
                             <div 
                               key={book.id}
                               onClick={() => setSelectedBook(book)}
-                              className="flex flex-col bg-gradient-to-b from-amber-900 via-amber-950 to-stone-950 rounded-xl cursor-pointer transition border border-amber-300/40 hover:border-amber-400 group shadow-lg hover:-translate-y-1 relative overflow-hidden select-none h-60"
+                              className="flex flex-col bg-stone-950 rounded-xl cursor-pointer transition border border-amber-300/40 hover:border-amber-400 group shadow-lg hover:-translate-y-1 relative overflow-hidden select-none h-60"
                             >
+                              {book.coverUrl ? (
+                                <img src={book.coverUrl} referrerPolicy="no-referrer" alt="" className="absolute inset-0 w-full h-full object-cover opacity-50 group-hover:opacity-75 group-hover:scale-110 transition-all duration-700 sepia-[.3]" />
+                              ) : (
+                                <div className="absolute inset-0 w-full h-full bg-gradient-to-b from-amber-900 via-amber-950 to-stone-950" />
+                              )}
+                              <div className="absolute inset-0 bg-gradient-to-t from-stone-950 via-stone-950/70 to-transparent pointer-events-none" />
+
                               {/* Book spine line effect */}
-                              <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500/40 border-r border-amber-600/20" />
+                              <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500/40 border-r border-amber-600/20 z-10" />
                               
                               {/* Cover Main Content */}
-                              <div className="flex-1 p-3 flex flex-col justify-between text-center pl-5 relative z-10">
+                              <div className="flex-1 p-3 flex flex-col justify-between text-center pl-5 relative z-20">
                                 {/* Top Badge */}
                                 <div className="flex justify-between items-center">
                                   <span className="text-[7px] text-amber-300 font-mono font-black border border-amber-400/30 px-1 py-0.5 rounded uppercase tracking-widest bg-amber-950/40">

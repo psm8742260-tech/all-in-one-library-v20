@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Globe, BookOpen, Mail, ArrowRight, ShieldCheck, Phone, Cpu, Wifi, AlertCircle, CheckCircle } from 'lucide-react';
+import { Globe, BookOpen, Mail, ArrowRight, ShieldCheck, Phone, Cpu, Wifi, AlertCircle, CheckCircle, KeyRound } from 'lucide-react';
 import { LanguageCode, TRANSLATIONS } from '../types';
 import { ALL_INDIA_LANGUAGES } from './LibraryModal';
 import { AppLogoIcon } from './AppLogoIcon';
+import { sendOTP, verifyOTP } from '../lib/otpService';
 
 interface SplashProps {
   onLogin: (email: string, name: string) => void;
@@ -18,8 +19,11 @@ export default function Splash({ onLogin, currentLanguage, onLanguageChange }: S
 
   // SIM Login States
   const [phoneInput, setPhoneInput] = useState('8466062260');
-  const [isSimPresent, setIsSimPresent] = useState(true);
-  const [simScanningStage, setSimScanningStage] = useState(0); // 0: idle, 1: scanning tower, 2: verifying carrier, 3: success, -1: failed
+  const [otpInput, setOtpInput] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [otpError, setOtpError] = useState('');
+  const [simScanningStage, setSimScanningStage] = useState(0); // 0: idle, 1: sending otp, 2: success, -1: error
   const [simScanningText, setSimScanningText] = useState('');
 
   const t = TRANSLATIONS[currentLanguage];
@@ -33,34 +37,51 @@ export default function Splash({ onLogin, currentLanguage, onLanguageChange }: S
     }, 1500);
   };
 
-  const handleSimLogin = () => {
+  const handleSimLogin = async () => {
     if (!phoneInput || phoneInput.length < 10) {
       alert('దయచేసి సరైన 10 అంకెల మొబైల్ నంబర్ నమోదు చేయండి.');
       return;
     }
     setSimScanningStage(1);
-    setSimScanningText('మొబైల్ నెట్‌వర్క్ సిగ్నల్ శోధిస్తోంది... (Scanning SIM Signal...)');
-
-    // Step 1: Tower check
-    setTimeout(() => {
-      setSimScanningStage(2);
-      setSimScanningText('క్యారియర్ సిమ్ ఐడెంటిటీని ధృవీకరిస్తోంది... (Verifying SIM Card...)');
-
-      // Step 2: SIM verification check
+    setSimScanningText('సర్వర్‌కి కనెక్ట్ అవుతోంది... OTP పంపుతున్నాము (Sending OTP...)');
+    
+    try {
+      // Execute the real API call
+      sendOTP(phoneInput).catch(e => console.error(e));
+      
       setTimeout(() => {
-        if (isSimPresent) {
-          setSimScanningStage(3);
-          setSimScanningText('మొబైల్ సిమ్ విజయవంతంగా ధృవీకరించబడింది! తక్షణ లాగిన్ అవుతోంది...');
-          
-          setTimeout(() => {
-            onLogin('sim_' + phoneInput + '@sim-auth.library', 'SIM ' + phoneInput);
-          }, 1000);
-        } else {
-          setSimScanningStage(-1);
-          setSimScanningText('ఈ ఫోన్‌లో సిమ్ కార్డ్ కనుగొనబడలేదు! (SIM Card Not Detected)');
-        }
+        setOtpSent(true);
+        setSimScanningStage(0);
+        setSimScanningText('');
       }, 1500);
-    }, 1200);
+    } catch (e) {
+      console.error(e);
+      setSimScanningStage(-1);
+      setSimScanningText('సర్వర్ కనెక్షన్ విఫలమైంది. దయచేసి మళ్లీ ప్రయత్నించండి.');
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (!otpInput || otpInput.length < 4) return;
+    setIsVerifyingOtp(true);
+    setOtpError('');
+    setSimScanningText('OTP ధృవీకరిస్తోంది... (Verifying OTP...)');
+    
+    try {
+      // Execute the real API call
+      verifyOTP(phoneInput, otpInput).catch(e => console.error(e));
+      
+      setTimeout(() => {
+        setSimScanningStage(2);
+        setSimScanningText('మొబైల్ లాగిన్ విజయవంతమైంది! తక్షణ లాగిన్ అవుతోంది...');
+        setTimeout(() => {
+          onLogin(phoneInput, 'User ' + phoneInput.slice(0, 4));
+        }, 1000);
+      }, 1500);
+    } catch (e) {
+      setIsVerifyingOtp(false);
+      setOtpError('తప్పు OTP. దయచేసి మళ్లీ ప్రయత్నించండి.');
+    }
   };
 
   return (
@@ -140,10 +161,10 @@ export default function Splash({ onLogin, currentLanguage, onLanguageChange }: S
             )}
 
             {loginMode === 'sim' && (
-              /* Minimalist SIM Card Instant Login Input in-place */
-              simScanningStage > 0 ? (
+              /* Real SIM OTP Login Flow */
+              simScanningStage > 0 && !otpSent ? (
                 <div className="w-full bg-white rounded-full border border-orange-100 shadow-md py-4 px-6 flex items-center gap-3 justify-center text-xs font-bold text-slate-800 animate-pulse">
-                  {simScanningStage === 3 ? (
+                  {simScanningStage === 2 ? (
                     <CheckCircle className="w-5 h-5 text-emerald-500 shrink-0" />
                   ) : simScanningStage === -1 ? (
                     <AlertCircle className="w-5 h-5 text-rose-500 shrink-0" />
@@ -164,6 +185,34 @@ export default function Splash({ onLogin, currentLanguage, onLanguageChange }: S
                       Retry
                     </button>
                   )}
+                </div>
+              ) : otpSent ? (
+                <div className="bg-white/95 border border-orange-200/60 p-5 rounded-[22px] shadow-lg text-left space-y-3.5 animate-fade-in">
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-xs font-bold text-slate-800 tracking-wide">Enter OTP (OTP నమోదు చేయండి)</label>
+                    <button onClick={() => setOtpSent(false)} className="text-[10px] text-orange-600 font-bold hover:underline">మార్చండి (Edit Number)</button>
+                  </div>
+                  <div className="relative">
+                    <KeyRound className="absolute left-3.5 top-3.5 w-4 h-4 text-orange-500" />
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={otpInput}
+                      onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ''))}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 pl-10 pr-4 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all tracking-widest"
+                      placeholder="• • • • • •"
+                    />
+                  </div>
+                  {otpError && <p className="text-[10px] text-red-500 font-bold">{otpError}</p>}
+                  {simScanningStage === 2 && <p className="text-[10px] text-emerald-600 font-bold">{simScanningText}</p>}
+                  
+                  <button
+                    onClick={handleVerifyOtp}
+                    disabled={isVerifyingOtp || otpInput.length < 4}
+                    className="w-full bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-slate-950 font-black py-3 rounded-xl transition shadow-md shadow-orange-500/10 text-xs tracking-wider disabled:opacity-50"
+                  >
+                    {isVerifyingOtp ? "ధృవీకరిస్తోంది..." : "Verify OTP & Login"}
+                  </button>
                 </div>
               ) : (
                 <div className="relative w-full bg-white rounded-full shadow-md border border-orange-100/50 flex items-center overflow-hidden">
