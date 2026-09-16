@@ -86,21 +86,20 @@ function decodeApiKey(key: string | undefined): string {
   const trimmed = key.trim();
   if (!trimmed) return '';
 
-  // If it's already a plain text key
-  if (trimmed.startsWith('AIzaSy') || trimmed.startsWith('sk-')) {
+  // If it's already a plain text key starting with a known prefix
+  if (trimmed.startsWith('AIzaSy') || trimmed.startsWith('sk-') || trimmed.startsWith('AQ.')) {
     return trimmed;
   }
 
   try {
     // Try to decode Base64
-    const decoded = Buffer.from(trimmed, 'base64').toString('utf8');
-    // If decoded string is valid printable ASCII and has reasonable length
-    const isPrintable = /^[\x20-\x7E]+$/.test(decoded);
-    if (isPrintable && decoded.length > 5) {
-      return decoded.trim();
+    const decoded = Buffer.from(trimmed, 'base64').toString('utf8').trim();
+    // Verify if the decoded key starts with a valid prefix
+    if (decoded.startsWith('AIzaSy') || decoded.startsWith('sk-') || decoded.startsWith('AQ.')) {
+      return decoded;
     }
   } catch (error) {
-    // Ignore error and return trimmed
+    // Ignore error
   }
 
   return trimmed;
