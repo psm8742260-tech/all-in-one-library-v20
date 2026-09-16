@@ -80,12 +80,39 @@ app.get('/api/app-control', (req, res) => {
 
 const PORT = process.env.PORT || 8080;
 
+// Helper to decode Base64 encoded API keys or return plain text if not encoded
+function decodeApiKey(key: string | undefined): string {
+  if (!key) return '';
+  const trimmed = key.trim();
+  if (!trimmed) return '';
+
+  // If it's already a plain text key
+  if (trimmed.startsWith('AIzaSy') || trimmed.startsWith('sk-')) {
+    return trimmed;
+  }
+
+  try {
+    // Try to decode Base64
+    const decoded = Buffer.from(trimmed, 'base64').toString('utf8');
+    // If decoded string is valid printable ASCII and has reasonable length
+    const isPrintable = /^[\x20-\x7E]+$/.test(decoded);
+    if (isPrintable && decoded.length > 5) {
+      return decoded.trim();
+    }
+  } catch (error) {
+    // Ignore error and return trimmed
+  }
+
+  return trimmed;
+}
+
 // Initialize Google GenAI on the server side lazily to prevent crashing if GEMINI_API_KEY is not defined at startup.
 // Note: User-Agent set to 'aistudio-build' is required for AI Studio telemetry.
 let _aiInstance: GoogleGenAI | null = null;
 function getAI(): GoogleGenAI {
   if (!_aiInstance) {
-    const apiKey = process.env.GEMINI_API_KEY || 'DUMMY_KEY_TO_PREVENT_STARTUP_CRASH';
+    const rawKey = process.env.GEMINI_API_KEY || 'DUMMY_KEY_TO_PREVENT_STARTUP_CRASH';
+    const apiKey = decodeApiKey(rawKey);
     _aiInstance = new GoogleGenAI({
       apiKey,
       httpOptions: {
@@ -174,9 +201,10 @@ Instructions:
 4. IMPORTANT: You must output your response in valid JSON format.`;
 
     // Check if DeepSeek is enabled and configured (either via client settings or server env)
-    const effectiveDsKey = (deepseekSettings && deepseekSettings.useDeepSeek && deepseekSettings.apiKey)
+    const rawDsKey = (deepseekSettings && deepseekSettings.useDeepSeek && deepseekSettings.apiKey)
       ? deepseekSettings.apiKey
       : process.env.DEEPSEEK_API_KEY;
+    const effectiveDsKey = decodeApiKey(rawDsKey);
 
     if (effectiveDsKey) {
       try {
@@ -328,9 +356,10 @@ Generate a book with:
 Output format must be JSON conforming to the requested schema.`;
 
     // Check if DeepSeek is enabled and configured (either via client settings or server env)
-    const effectiveDsKey = (deepseekSettings && deepseekSettings.useDeepSeek && deepseekSettings.apiKey)
+    const rawDsKey = (deepseekSettings && deepseekSettings.useDeepSeek && deepseekSettings.apiKey)
       ? deepseekSettings.apiKey
       : process.env.DEEPSEEK_API_KEY;
+    const effectiveDsKey = decodeApiKey(rawDsKey);
 
     if (effectiveDsKey) {
       try {
@@ -608,7 +637,8 @@ ${JSON.stringify(books, null, 2)}
 - Always respond in a polite, respectful tone in Telugu or their selected language, and address the user as "అడ్మిన్ గారు" (Admin Garu).
 - Be extremely accurate and helpful about the database contents.`;
 
-    const apiKey = process.env.DEEPSEEK_API_KEY || process.env.GEMINI_API_KEY;
+    const rawApiKey = process.env.DEEPSEEK_API_KEY || process.env.GEMINI_API_KEY;
+    const apiKey = decodeApiKey(rawApiKey);
     if (!apiKey) {
       return res.status(500).json({ error: 'No API key configured on the server' });
     }

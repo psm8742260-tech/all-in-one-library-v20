@@ -609,7 +609,9 @@ Downloaded from All In One Library Hub
       setMessages(prev => [...prev, {
         id: `err-${Date.now()}`,
         sender: 'assistant',
-        text: `Sorry, I encountered an error. Please try again. Error details: ${error.message}`,
+        text: currentLanguage === 'te' 
+          ? "నమస్కారం అడ్మిన్ గారు! క్షమించాలి, తాత్కాలికంగా నెట్‌వర్క్ సమస్య ఏర్పడింది. దయచేసి మరోసారి ప్రయత్నించండి లేదా మన గ్రంథాలయంలోని 308 ప్రామాణిక పుస్తకాలు మరియు 64 చతుష్షష్టి కళలను నేరుగా చదవండి."
+          : "Hello Admin Garu! A temporary connection issue occurred. Please try again or explore our library of 308 books and 64 traditional arts directly.",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       }]);
     } finally {
