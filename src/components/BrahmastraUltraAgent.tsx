@@ -72,13 +72,15 @@ export const BrahmastraUltraAgent: React.FC<Props> = ({ onSelectAgentForPrompt, 
         ], { apiKey: deepseekKey });
       } catch (dsDirectError: any) {
         console.log('Direct DeepSeek failed, trying server-side proxy...');
+        const geminiApiKey = localStorage.getItem('gemini_api_key') || '';
         const srvRes = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             messages: [{ id: 'user-1', sender: 'user', text: userPrompt }],
             currentLanguage: 'te',
-            deepseekSettings: deepseekKey ? { useDeepSeek: true, apiKey: deepseekKey } : null
+            deepseekSettings: deepseekKey ? { useDeepSeek: true, apiKey: deepseekKey } : null,
+            geminiApiKey
           })
         });
         if (srvRes.ok) {

@@ -124,6 +124,19 @@ function getAI(): GoogleGenAI {
   return _aiInstance;
 }
 
+function getAIWithKey(customKey?: string): GoogleGenAI {
+  const rawKey = customKey || process.env.GEMINI_API_KEY || 'DUMMY_KEY_TO_PREVENT_STARTUP_CRASH';
+  const apiKey = decodeApiKey(rawKey);
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      },
+    },
+  });
+}
+
 const ai = {
   get models() {
     return getAI().models;
@@ -138,6 +151,70 @@ function parseBase64DataUri(dataUri: string) {
     data: matches[2]
   };
 }
+
+
+// Endpoint: Test API Key Connection (Online/Offline Status Check)
+app.post('/api/test-key', async (req, res) => {
+  try {
+    const { type, apiKey, baseUrl, model } = req.body;
+    if (!apiKey) {
+      return res.json({ success: false, error: 'కీ ఖాళీగా ఉంది (Key is empty)' });
+    }
+
+    const decoded = decodeApiKey(apiKey);
+
+    if (type === 'deepseek') {
+      const activeUrl = (baseUrl || 'https://api.deepseek.com').replace(/\/$/, '') + '/chat/completions';
+      const activeModel = model || 'deepseek-chat';
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+
+      try {
+        const testRes = await fetch(activeUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${decoded}`
+          },
+          body: JSON.stringify({
+            model: activeModel,
+            messages: [{ role: 'user', content: 'Ping' }],
+            max_tokens: 5
+          }),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        if (testRes.ok) {
+          return res.json({ success: true, message: 'డీప్‌సీక్ ఆన్‌లైన్ లో ఉంది! (DeepSeek is Online)' });
+        } else {
+          const errText = await testRes.text();
+          return res.json({ success: false, error: `Error ${testRes.status}: ${errText}` });
+        }
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        return res.json({ success: false, error: err.message });
+      }
+    } else {
+      // Gemini validation
+      try {
+        const testAi = getAIWithKey(apiKey);
+        const testRes = await testAi.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: 'Ping',
+          config: { maxOutputTokens: 5 }
+        });
+        if (testRes && testRes.text) {
+          return res.json({ success: true, message: 'జెమిని ఆన్‌లైన్ లో ఉంది! (Gemini is Online)' });
+        }
+        return res.json({ success: false, error: 'లైట్ రెస్పాన్స్ వైఫల్యం' });
+      } catch (err: any) {
+        return res.json({ success: false, error: err.message });
+      }
+    }
+  } catch (err: any) {
+    return res.json({ success: false, error: err.message });
+  }
+});
 
 // Endpoint: AI-Powered Chat & Book Assistant
 app.post('/api/chat', async (req, res) => {
@@ -195,7 +272,7 @@ ${JSON.stringify(availableBooks || [], null, 2)}
 
 Instructions:
 1. When user asks for a book, if it matches an existing book, include its existing ID in "recommendedBooks".
-2. If it is a new/external book requested by the user, generate a provisional book object in "recommendedBooks" with a unique ID (e.g. 'gen-123'), accurate title, author, description, category, and costToUnlock: 20, isExternal: true.
+2. If it is a new/external book requested by the user, generate a provisional book object in "recommendedBooks" with a unique ID (e.g. 'gen-123'), accurate title, author, description, category, costToUnlock: 20, isExternal: true, and a beautiful Unsplash coverImage URL (e.g. "https://images.unsplash.com/photo-...") representing the topic of the book.
 3. Keep the "reply" narrative concise, friendly, inspiring, and focused on the requested book with its pricing amounts.
 4. IMPORTANT: You must output your response in valid JSON format.`;
 
@@ -219,6 +296,9 @@ Instructions:
           }))
         ];
 
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s timeout
+
         const dsResponse = await fetch(baseUrl, {
           method: 'POST',
           headers: {
@@ -228,9 +308,12 @@ Instructions:
           body: JSON.stringify({
             model: model,
             messages: chatMessages,
-            response_format: { type: 'json_object' }
-          })
+            response_format: { type: 'json_object' },
+            max_tokens: 8000
+          }),
+          signal: controller.signal
         });
+        clearTimeout(timeoutId);
 
         if (!dsResponse.ok) {
           const errText = await dsResponse.text();
@@ -239,7 +322,16 @@ Instructions:
 
         const dsData: any = await dsResponse.json();
         const content = dsData.choices?.[0]?.message?.content || '{}';
-        const result = JSON.parse(content);
+        let result;
+        try {
+          result = JSON.parse(content);
+        } catch (parseErr) {
+          console.warn('DeepSeek JSON parse failed in chat, attempting basic repair...');
+          let repaired = content.trim();
+          if (repaired.endsWith(',')) repaired = repaired.slice(0, -1);
+          if (!repaired.endsWith('}')) repaired += '}';
+          result = JSON.parse(repaired);
+        }
         return res.json(result);
       } catch (dsError: any) {
         console.error('DeepSeek chat failed, falling back to Gemini:', dsError.message);
@@ -280,7 +372,8 @@ Instructions:
     });
 
     // Generate response using gemini-3.5-flash (more available model)
-    const response = await ai.models.generateContent({
+    const activeAi = getAIWithKey(req.body.geminiApiKey);
+    const response = await activeAi.models.generateContent({
       model: 'gemini-3.5-flash',
       contents: [
         { role: 'user', parts: [{ text: systemPrompt }] },
@@ -310,7 +403,8 @@ Instructions:
                   category: { type: Type.STRING },
                   costToUnlock: { type: Type.INTEGER },
                   costPerMinute: { type: Type.INTEGER },
-                  isExternal: { type: Type.BOOLEAN, description: 'True if this is a new book to be generated/fetched.' }
+                  isExternal: { type: Type.BOOLEAN, description: 'True if this is a new book to be generated/fetched.' },
+                  coverImage: { type: Type.STRING, description: 'Optional beautiful book cover URL matching the theme from Unsplash.' }
                 }
               }
             }
@@ -351,6 +445,8 @@ Generate a book with:
 4. 3 distinct Chapters (each with a Title and at least 3-4 paragraphs of readable, high-quality, authentic-feeling text/chapters or complete summaries). Make the text rich and fully written out — no placeholders!
 5. costToUnlock (a reasonable credits number, e.g., 30 to 60)
 6. costPerMinute (a reasonable credits rate, e.g., 1 to 3)
+7. pageCount (A realistic page count based on the book type, typically 100 to 500)
+8. fileSizeMb (A realistic file size in MB, e.g., 2.5, 12.0)
 
 Output format must be JSON conforming to the requested schema.`;
 
@@ -366,6 +462,9 @@ Output format must be JSON conforming to the requested schema.`;
         const baseUrl = ((deepseekSettings && deepseekSettings.baseUrl) || process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '') + '/chat/completions';
         const model = (deepseekSettings && deepseekSettings.model) || process.env.DEEPSEEK_MODEL || 'deepseek-chat';
 
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout for book generation
+
         const dsResponse = await fetch(baseUrl, {
           method: 'POST',
           headers: {
@@ -378,9 +477,12 @@ Output format must be JSON conforming to the requested schema.`;
               { role: 'system', content: 'You are an elite literary scholar and book summarizer. Always output strictly valid JSON conforming to the requested schema.' },
               { role: 'user', content: generationPrompt }
             ],
-            response_format: { type: 'json_object' }
-          })
+            response_format: { type: 'json_object' },
+            max_tokens: 8000
+          }),
+          signal: controller.signal
         });
+        clearTimeout(timeoutId);
 
         if (!dsResponse.ok) {
           const errText = await dsResponse.text();
@@ -389,14 +491,27 @@ Output format must be JSON conforming to the requested schema.`;
 
         const dsData: any = await dsResponse.json();
         const content = dsData.choices?.[0]?.message?.content || '{}';
-        const bookData = JSON.parse(content);
+        let bookData;
+        try {
+          bookData = JSON.parse(content);
+        } catch (parseErr) {
+          console.warn('DeepSeek JSON parse failed in generate-book, attempting basic repair...');
+          let repaired = content.trim();
+          if (repaired.endsWith(',')) repaired = repaired.slice(0, -1);
+          if (!repaired.endsWith('}')) repaired += '}';
+          if (repaired.lastIndexOf(']') === -1 && repaired.includes('"chapters": [')) {
+             repaired = repaired.replace(/}$/, ']}');
+          }
+          bookData = JSON.parse(repaired);
+        }
         return res.json(bookData);
       } catch (dsError: any) {
         console.error('DeepSeek generation failed, falling back to Gemini:', dsError.message);
       }
     }
 
-    const response = await ai.models.generateContent({
+    const activeAi = getAIWithKey(req.body.geminiApiKey);
+    const response = await activeAi.models.generateContent({
       model: 'gemini-3.5-flash',
       contents: generationPrompt,
       config: {
@@ -454,7 +569,9 @@ Output format must be JSON conforming to the requested schema.`;
         }
       ],
       costToUnlock: 20,
-      costPerMinute: 1
+      costPerMinute: 1,
+      pageCount: 120,
+      fileSizeMb: 3.5
     });
   }
 });
@@ -486,7 +603,8 @@ You MUST provide Sanskrit names, regional Telugu names, Hindi names, Tamil names
 Also extract its description and medicinal uses in Telugu.
 Return the result in strictly formatted JSON conforming to the requested schema.`;
 
-    const response = await ai.models.generateContent({
+    const activeAi = getAIWithKey(req.body.geminiApiKey);
+    const response = await activeAi.models.generateContent({
       model: 'gemini-3.5-flash',
       contents: [imagePart, { text: prompt }],
       config: {
@@ -682,7 +800,8 @@ ${JSON.stringify(books, null, 2)}
         parts: [{ text: msg.text }]
       }));
 
-      const response = await ai.models.generateContent({
+      const activeAi = getAIWithKey(req.body.geminiApiKey);
+      const response = await activeAi.models.generateContent({
         model: 'gemini-3.5-flash',
         contents: [
           { role: 'user', parts: [{ text: systemPrompt }] },

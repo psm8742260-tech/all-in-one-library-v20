@@ -157,12 +157,13 @@ export default function Dashboard({
       setIdentifiedTreeDetails(null);
 
       try {
+        const geminiApiKey = localStorage.getItem('gemini_api_key') || '';
         const res = await fetch('/api/identify-plant', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ image: base64Img })
+          body: JSON.stringify({ image: base64Img, geminiApiKey })
         });
 
         if (!res.ok) {
@@ -570,6 +571,8 @@ Downloaded from All In One Library Hub
         console.error('Failed to parse deepseek_settings', e);
       }
 
+      const geminiApiKey = localStorage.getItem('gemini_api_key') || '';
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -585,7 +588,8 @@ Downloaded from All In One Library Hub
             costPerMinute: b.costPerMinute
           })),
           currentLanguage,
-          deepseekSettings
+          deepseekSettings,
+          geminiApiKey
         })
       });
 
@@ -642,6 +646,8 @@ Downloaded from All In One Library Hub
         console.error('Failed to parse deepseek_settings', e);
       }
 
+      const geminiApiKey = localStorage.getItem('gemini_api_key') || '';
+
       const response = await fetch('/api/generate-book', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -649,7 +655,8 @@ Downloaded from All In One Library Hub
           title: provisionalBook.title,
           author: provisionalBook.author,
           currentLanguage,
-          deepseekSettings
+          deepseekSettings,
+          geminiApiKey
         })
       });
 
@@ -684,10 +691,11 @@ Downloaded from All In One Library Hub
         costPerMinute: generatedData.costPerMinute || provisionalBook.costPerMinute,
         chapters: generatedData.chapters || [],
         isUnlocked: true, // Auto unlocked since they paid for fetch!
-        folderId: isPalmBook ? 'fol-talapatra' : 'fol-general' // Save in General Library folder!
+        folderId: isPalmBook ? 'fol-talapatra' : 'fol-general', // Save in General Library folder!
+        coverUrl: provisionalBook.coverImage || provisionalBook.coverUrl || undefined
       };
 
-      onUpdateBooks([newBook, ...books]);
+      onAddBook(newBook);
 
       // Alert & Add Success message to chat
       setMessages(prev => [...prev, {
@@ -1172,12 +1180,63 @@ Downloaded from All In One Library Hub
                                   key={provisionalBook.id} 
                                   className="bg-orange-50 border border-orange-300 rounded-xl p-2 px-2.5 flex items-start gap-2 shadow-sm hover:border-orange-400 transition-all"
                                 >
-                                  <div className="p-1 bg-orange-500/10 rounded-lg text-orange-400 border border-orange-500/20 shrink-0">
-                                    <BookOpen className="w-4 h-4" />
+                                  {/* Left side: Premium Miniature Book Cover */}
+                                  <div className="relative w-12 h-16 rounded-lg overflow-hidden border border-orange-300 shadow-md shrink-0 bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950 flex flex-col justify-between p-1.5 text-center select-none">
+                                    {/* Book spine line effect */}
+                                    <div className="absolute top-0 left-0 w-1 h-full bg-white/20 border-r border-black/10 z-10" />
+                                    
+                                    {(displayBook.coverUrl || (displayBook as any).coverImage) ? (
+                                      <img 
+                                        src={displayBook.coverUrl || (displayBook as any).coverImage} 
+                                        alt="" 
+                                        referrerPolicy="no-referrer"
+                                        className="absolute inset-0 w-full h-full object-cover z-0" 
+                                      />
+                                    ) : (
+                                      <>
+                                        {/* Dynamic Beautiful Fallback Cover based on book category */}
+                                        {(() => {
+                                          const category = (displayBook.category || '').toLowerCase();
+                                          let fallbackImg = 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&w=150&q=80'; // Default book
+                                          
+                                          if (category.includes('spiritual') || category.includes('devotional') || category.includes('భక్తి')) {
+                                            fallbackImg = 'https://images.unsplash.com/photo-1609137144814-874ccbf34c51?auto=format&fit=crop&w=150&q=80';
+                                          } else if (category.includes('history') || category.includes('mythology') || category.includes('చరిత్ర') || category.includes('పురాణ')) {
+                                            fallbackImg = 'https://images.unsplash.com/photo-1585007600263-71228e40c8d1?auto=format&fit=crop&w=150&q=80';
+                                          } else if (category.includes('classics') || category.includes('novel') || category.includes('నవల')) {
+                                            fallbackImg = 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?auto=format&fit=crop&w=150&q=80';
+                                          } else if (category.includes('science') || category.includes('philosophy') || category.includes('తత్వ')) {
+                                            fallbackImg = 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=150&q=80';
+                                          } else if (category.includes('mystery') || category.includes('thriller')) {
+                                            fallbackImg = 'https://images.unsplash.com/photo-1509248961158-e54f6934749c?auto=format&fit=crop&w=150&q=80';
+                                          } else if (category.includes('ancient') || category.includes('art') || category.includes('కళ')) {
+                                            fallbackImg = 'https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&w=150&q=80';
+                                          }
+
+                                          return (
+                                            <img 
+                                              src={fallbackImg} 
+                                              alt="" 
+                                              referrerPolicy="no-referrer"
+                                              className="absolute inset-0 w-full h-full object-cover z-0 opacity-80" 
+                                            />
+                                          );
+                                        })()}
+                                        
+                                        <div className="absolute inset-0 bg-black/40 z-5" />
+                                        <div className="text-[7px] font-black text-amber-200 line-clamp-2 uppercase tracking-tight z-10 leading-none relative">
+                                          {displayBook.title}
+                                        </div>
+                                        <div className="my-auto text-[10px] z-10 relative">📖</div>
+                                        <div className="text-[5px] text-amber-300 font-bold truncate z-10 relative">
+                                          {displayBook.author}
+                                        </div>
+                                      </>
+                                    )}
                                   </div>
                                   <div className="flex-1 min-w-0">
                                     <h5 className="text-[11px] font-bold text-slate-900 line-clamp-1">{displayBook.title}</h5>
-                                    <p className="text-[9px] text-slate-800 line-clamp-1">by {displayBook.author} • <span className="font-mono text-slate-900 font-bold">{displayBook.costToUnlock} Credits</span></p>
+                                    <p className="text-[9px] text-slate-800 line-clamp-1">by {displayBook.author} • <span className="font-mono text-slate-900 font-bold">{isAdmin ? 'ఉచితం (Admin)' : `${displayBook.costToUnlock} Credits`}</span></p>
                                     <p className="text-[10px] text-slate-700 line-clamp-1 mt-0.5 leading-normal hidden sm:block">{displayBook.description}</p>
                                     
                                     {/* Action buttons inside book card: 1. Listen (Free ₹0), 2. Read (₹10), 3. Download (₹29) */}
@@ -1720,9 +1779,15 @@ Downloaded from All In One Library Hub
                               </div>
 
                               {/* Internet Archive style bottom count bar */}
-                              <div className="bg-amber-950/90 border-t border-amber-800/30 px-3 py-1.5 flex items-center gap-1.5 text-amber-200 text-[9px] font-bold tracking-wider shrink-0 pl-5">
+                              <div className="bg-amber-950/90 border-t border-amber-800/30 px-3 py-1.5 flex flex-wrap items-center gap-1.5 text-amber-200 text-[9px] font-bold tracking-wider shrink-0 pl-5">
                                 <span className="text-[10px]">📋</span>
                                 <span className="truncate">{charDisplay} అక్షరాలు • {book.chapters.length} Ch</span>
+                                {(book.pageCount || book.fileSizeMb) && (
+                                  <div className="flex items-center gap-2 border-l border-amber-800/50 pl-2 ml-1">
+                                    {book.pageCount && <span>{book.pageCount} Pages</span>}
+                                    {book.fileSizeMb && <span>{book.fileSizeMb} MB</span>}
+                                  </div>
+                                )}
                               </div>
                             </div>
                           );
@@ -1755,6 +1820,8 @@ Downloaded from All In One Library Hub
             transactions={transactions}
             onTopUp={handleTopUpCredits}
             currentLanguage={currentLanguage}
+            isAdmin={isAdmin}
+            userEmail={user.email}
           />
         </div>
       </div>
@@ -1783,16 +1850,20 @@ Downloaded from All In One Library Hub
                   ? 'bg-gradient-to-b from-amber-900 to-stone-950 border border-amber-300/40' 
                   : 'bg-gradient-to-b from-indigo-950 to-slate-950 border border-orange-200/40'
               }`}>
+                {selectedBook.coverUrl && (
+                  <img src={selectedBook.coverUrl} referrerPolicy="no-referrer" alt="" className="absolute inset-0 w-full h-full object-cover opacity-60 sepia-[.2]" />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-slate-950/40 pointer-events-none" />
                 <div className={`absolute top-0 left-0 w-1 h-full border-r ${
                   selectedBook.folderId === 'fol-talapatra' ? 'bg-amber-500/30 border-amber-600/10' : 'bg-orange-400/30 border-orange-500/10'
                 }`} />
-                <span className="text-[6px] text-amber-200 font-mono font-bold uppercase tracking-widest block text-center">
+                <span className="text-[6px] text-amber-200 font-mono font-bold uppercase tracking-widest block text-center relative z-10">
                   {selectedBook.category}
                 </span>
-                <span className="text-xl block text-center">
+                <span className="text-xl block text-center relative z-10">
                   {selectedBook.folderId === 'fol-talapatra' ? '📜' : '📖'}
                 </span>
-                <span className="text-[6px] text-slate-400 font-sans block text-center leading-none truncate">
+                <span className="text-[6px] text-amber-100 font-sans block text-center leading-none truncate relative z-10 bg-slate-950/60 py-0.5 px-1 rounded-sm">
                   {selectedBook.title}
                 </span>
               </div>
@@ -1833,7 +1904,7 @@ Downloaded from All In One Library Hub
               </div>
               <div className="bg-orange-100 p-2 rounded-lg border border-orange-300 text-center">
                 <span className="text-[8px] text-slate-700/60 block uppercase font-sans">రేట్ (Rate)</span>
-                <span className="text-slate-950 font-black text-xs">{selectedBook.costPerMinute} Cr/m</span>
+                <span className="text-slate-950 font-black text-xs">{isAdmin ? 'ఉచితం (Admin)' : `${selectedBook.costPerMinute} Cr/m`}</span>
               </div>
             </div>
 
@@ -1914,10 +1985,17 @@ Downloaded from All In One Library Hub
                 </button>
               </div>
 
-              <div className="flex items-center gap-1.5 justify-center text-[10px] text-slate-900/60">
-                <QrCode className="w-3.5 h-3.5 text-orange-400" />
-                <span>UPI QR కోడ్ ద్వారా నేరుగా చెల్లించి అన్‌లాక్ చేసుకోండి</span>
-              </div>
+              {isAdmin ? (
+                <div className="flex items-center gap-1.5 justify-center text-[10px] text-emerald-600 font-bold">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>అడ్మిన్ అనుమతి సక్రియం (Admin Access Active)</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 justify-center text-[10px] text-slate-900/60">
+                  <QrCode className="w-3.5 h-3.5 text-orange-400" />
+                  <span>UPI QR కోడ్ ద్వారా నేరుగా చెల్లించి అన్‌లాక్ చేసుకోండి</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1937,7 +2015,7 @@ Downloaded from All In One Library Hub
       />
 
       {/* Admin Panel Modal Overlay */}
-      {showAdminPanel && (
+      {showAdminPanel && isAdmin && (
         <AdminPanel
           user={user}
           books={books}

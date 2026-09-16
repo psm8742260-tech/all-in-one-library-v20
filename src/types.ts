@@ -82,6 +82,8 @@ export interface Book {
   isSampleMode?: boolean;
   folderId?: string; // Links to hierarchical folder
   language?: string; // Language of the book/content
+  pageCount?: number;
+  fileSizeMb?: number;
 }
 
 export interface Folder {

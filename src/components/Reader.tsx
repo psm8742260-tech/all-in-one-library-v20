@@ -18,6 +18,7 @@ interface ReaderProps {
 export default function Reader({ book, credits, onClose, onDeductCredits, currentLanguage }: ReaderProps) {
   const [activeChapterIndex, setActiveChapterIndex] = useState(0);
   const [fontSize, setFontSize] = useState<number>(18); // default size px
+  const [theme, setTheme] = useState<'light' | 'sepia' | 'dark'>('sepia');
   const [searchQuery, setSearchQuery] = useState('');
   const [isReadingSessionActive, setIsReadingSessionActive] = useState(false);
   const [sessionSeconds, setSessionSeconds] = useState(0);
@@ -35,10 +36,13 @@ export default function Reader({ book, credits, onClose, onDeductCredits, curren
   const t = TRANSLATIONS[currentLanguage];
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const currentChapter = book.chapters[activeChapterIndex] || book.chapters[0];
+  const currentChapter = book.chapters && book.chapters.length > 0 
+    ? (book.chapters[activeChapterIndex] || book.chapters[0]) 
+    : null;
 
   // Text to speech narration toggle
   const toggleSpeechNarration = () => {
+    if (!currentChapter) return;
     if (!('speechSynthesis' in window)) {
       alert('ఆడియో స్పీచ్ సదుపాయం అందుబాటులో లేదు.');
       return;
@@ -50,7 +54,7 @@ export default function Reader({ book, credits, onClose, onDeductCredits, curren
       return;
     }
 
-    const text = `${currentChapter.title}. ${currentChapter.content}`;
+    const text = `${currentChapter.title || ''}. ${currentChapter.content || ''}`;
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 0.95;
 
@@ -124,14 +128,14 @@ export default function Reader({ book, credits, onClose, onDeductCredits, curren
   // Highlight search words
   const renderParagraph = (text: string, index: number) => {
     if (!searchQuery) {
-      return <p key={index} style={{ fontSize: `${fontSize}px` }} className="text-slate-800 leading-relaxed font-serif mb-5">{text}</p>;
+      return <p key={index} style={{ fontSize: `${fontSize}px` }} className={`leading-relaxed font-serif mb-5 ${theme === 'dark' ? 'text-slate-300' : 'text-slate-800'}`}>{text}</p>;
     }
 
     const regex = new RegExp(`(${searchQuery})`, 'gi');
     const parts = text.split(regex);
 
     return (
-      <p key={index} style={{ fontSize: `${fontSize}px` }} className="text-slate-800 leading-relaxed font-serif mb-5">
+      <p key={index} style={{ fontSize: `${fontSize}px` }} className={`leading-relaxed font-serif mb-5 ${theme === 'dark' ? 'text-slate-300' : 'text-slate-800'}`}>
         {parts.map((part, i) => 
           regex.test(part) ? (
             <mark key={i} className="bg-amber-300 text-slate-950 px-1 rounded font-serif">{part}</mark>
@@ -143,14 +147,22 @@ export default function Reader({ book, credits, onClose, onDeductCredits, curren
     );
   };
 
+  const getThemeClasses = () => {
+    switch (theme) {
+      case 'dark': return 'bg-slate-900 text-slate-200';
+      case 'light': return 'bg-white text-slate-900';
+      case 'sepia': default: return 'bg-amber-50/70 text-slate-900';
+    }
+  };
+
   return (
-    <div className="flex flex-col h-full bg-amber-50/70 text-slate-900 relative">
+    <div className={`flex flex-col h-full relative ${getThemeClasses()}`}>
       {/* Reader header */}
-      <header className="flex justify-between items-center px-4 py-3 bg-white border-b border-slate-200 shadow-xs z-10">
+      <header className={`flex justify-between items-center px-4 py-3 border-b shadow-xs z-10 ${theme === 'dark' ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-200'}`}>
         <div className="flex items-center gap-3">
           <button 
             onClick={onClose}
-            className="group flex items-center gap-1.5 p-1 px-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl text-slate-700 transition-all active:scale-90"
+            className={`group flex items-center gap-1.5 p-1 px-2.5 border rounded-xl transition-all active:scale-90 ${theme === 'dark' ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700'}`}
             id="reader-back-btn"
             title="Go back to Library"
           >
@@ -158,20 +170,27 @@ export default function Reader({ book, credits, onClose, onDeductCredits, curren
             <span className="text-xs font-bold pr-0.5">Back</span>
           </button>
           <div>
-            <h3 className="font-serif font-bold text-sm text-slate-950 line-clamp-1">{book.title}</h3>
+            <h3 className={`font-serif font-bold text-sm line-clamp-1 ${theme === 'dark' ? 'text-slate-200' : 'text-slate-950'}`}>{book.title}</h3>
             <p className="text-xs text-slate-500 line-clamp-1">{book.author}</p>
           </div>
         </div>
 
         {/* Action controllers */}
         <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Theme Controls */}
+          <div className={`hidden sm:flex items-center rounded-lg p-0.5 border ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
+            <button onClick={() => setTheme('light')} className={`p-1 rounded ${theme === 'light' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`} title="Light Theme"><div className="w-3 h-3 rounded-full bg-slate-200 border border-slate-300"></div></button>
+            <button onClick={() => setTheme('sepia')} className={`p-1 rounded ${theme === 'sepia' ? 'bg-white shadow text-amber-900' : 'text-slate-500'}`} title="Sepia Theme"><div className="w-3 h-3 rounded-full bg-amber-100 border border-amber-300"></div></button>
+            <button onClick={() => setTheme('dark')} className={`p-1 rounded ${theme === 'dark' ? 'bg-slate-600 shadow text-white' : 'text-slate-500'}`} title="Dark Theme"><div className="w-3 h-3 rounded-full bg-slate-900 border border-slate-700"></div></button>
+          </div>
+
           {/* Universal Audio/Speaker Narration Button */}
           <button
             onClick={toggleSpeechNarration}
             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition border shadow-xs ${
               isSpeaking
                 ? 'bg-amber-500 text-slate-950 border-orange-400 animate-pulse'
-                : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200'
+                : theme === 'dark' ? 'bg-indigo-900 text-indigo-300 hover:bg-indigo-800 border-indigo-700' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200'
             }`}
             title="స్పీకర్‌లో అధ్యాయం వినండి (Listen via Speaker)"
             id="reader-speaker-narration-btn"
@@ -183,7 +202,7 @@ export default function Reader({ book, credits, onClose, onDeductCredits, curren
           {/* Font Controls */}
           <button 
             onClick={() => setFontSize(prev => Math.max(14, prev - 2))}
-            className="p-1.5 hover:bg-slate-100 rounded text-slate-600"
+            className={`p-1.5 rounded ${theme === 'dark' ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-600'}`}
             title="Decrease size"
             id="font-decrease-btn"
           >
@@ -191,7 +210,7 @@ export default function Reader({ book, credits, onClose, onDeductCredits, curren
           </button>
           <button 
             onClick={() => setFontSize(prev => Math.min(26, prev + 2))}
-            className="p-1.5 hover:bg-slate-100 rounded text-slate-600"
+            className={`p-1.5 rounded ${theme === 'dark' ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-600'}`}
             title="Increase size"
             id="font-increase-btn"
           >
@@ -408,13 +427,13 @@ export default function Reader({ book, credits, onClose, onDeductCredits, curren
         </button>
 
         <span className="text-xs font-serif text-slate-500">
-          Chapter {activeChapterIndex + 1} of {book.chapters.length}
+          Chapter {activeChapterIndex + 1} of {book.chapters ? book.chapters.length : 1}
         </span>
 
         <button
-          disabled={activeChapterIndex === book.chapters.length - 1}
+          disabled={!book.chapters || book.chapters.length === 0 || activeChapterIndex === book.chapters.length - 1}
           onClick={() => {
-            setActiveChapterIndex(prev => Math.min(book.chapters.length - 1, prev + 1));
+            setActiveChapterIndex(prev => Math.min(book.chapters ? book.chapters.length - 1 : 0, prev + 1));
             document.querySelector('.overflow-y-auto')?.scrollTo(0, 0);
           }}
           className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition"

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ShieldCheck, Upload, Trash2, Plus, X, BookOpen, AlertCircle, 
   Check, Lock, Sparkles, FolderPlus, Settings, Users, Bot, Zap,
@@ -175,6 +175,91 @@ export default function AdminPanel({
     return 'deepseek-chat';
   });
 
+  const [geminiApiKey, setGeminiApiKey] = useState<string>(() => {
+    return localStorage.getItem('gemini_api_key') || '';
+  });
+
+  const [isSavedSuccessfully, setIsSavedSuccessfully] = useState<boolean>(false);
+  const [geminiStatus, setGeminiStatus] = useState<'checking' | 'online' | 'offline' | 'idle'>('idle');
+  const [deepseekStatus, setDeepseekStatus] = useState<'checking' | 'online' | 'offline' | 'idle'>('idle');
+
+  const checkConnections = async (gKey: string, dsKey: string, dsUrl: string, dsModel: string) => {
+    if (gKey) {
+      setGeminiStatus('checking');
+      try {
+        const res = await fetch('/api/test-key', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'gemini', apiKey: gKey })
+        });
+        const data = await res.json();
+        setGeminiStatus(data.success ? 'online' : 'offline');
+      } catch (e) {
+        setGeminiStatus('offline');
+      }
+    } else {
+      setGeminiStatus('idle');
+    }
+
+    if (dsKey) {
+      setDeepseekStatus('checking');
+      try {
+        const res = await fetch('/api/test-key', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'deepseek', apiKey: dsKey, baseUrl: dsUrl, model: dsModel })
+        });
+        const data = await res.json();
+        setDeepseekStatus(data.success ? 'online' : 'offline');
+      } catch (e) {
+        setDeepseekStatus('offline');
+      }
+    } else {
+      setDeepseekStatus('idle');
+    }
+  };
+
+  useEffect(() => {
+    checkConnections(geminiApiKey, deepseekApiKey, deepseekBaseUrl, deepseekModel);
+  }, []);
+
+  const renderStatusDot = (status: 'checking' | 'online' | 'offline' | 'idle') => {
+    switch (status) {
+      case 'checking':
+        return (
+          <span className="flex items-center gap-1.5 text-[10px] text-orange-700 font-bold bg-orange-500/10 px-2 py-0.5 rounded-full border border-orange-500/20 animate-pulse">
+            <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+            <span>పరీక్షిస్తోంది... (Checking)</span>
+          </span>
+        );
+      case 'online':
+        return (
+          <span className="flex items-center gap-1.5 text-[10px] text-emerald-800 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 flex-row">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span>ఆన్‌లైన్ లో ఉంది (Online) ✓</span>
+          </span>
+        );
+      case 'offline':
+        return (
+          <span className="flex items-center gap-1.5 text-[10px] text-red-700 font-bold bg-red-500/10 px-2 py-0.5 rounded-full border border-red-500/20">
+            <span className="w-2 h-2 rounded-full bg-red-500"></span>
+            <span>కనెక్ట్ కాలేదు (Error/Offline) ✗</span>
+          </span>
+        );
+      case 'idle':
+      default:
+        return (
+          <span className="flex items-center gap-1.5 text-[10px] text-slate-600 font-bold bg-slate-500/10 px-2 py-0.5 rounded-full border border-slate-500/20">
+            <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+            <span>అమర్చలేదు (Not Configured)</span>
+          </span>
+        );
+    }
+  };
+
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
   const handleSavePricing = (e: React.FormEvent) => {
@@ -204,7 +289,14 @@ export default function AdminPanel({
     };
     localStorage.setItem('deepseek_settings', JSON.stringify(settings));
     localStorage.setItem('deepseek_api_key', deepseekApiKey.trim());
-    setNotification('అనుసంధాన సెట్టింగులు విజయవంతంగా భద్రపరచబడ్డాయి! చాట్ అసిస్టెంట్ ఇప్పుడు ఈ కాన్ఫిగరేషన్‌ను ఉపయోగిస్తుంది.');
+    localStorage.setItem('gemini_api_key', geminiApiKey.trim());
+    
+    setIsSavedSuccessfully(true);
+    setTimeout(() => setIsSavedSuccessfully(false), 4000);
+    
+    checkConnections(geminiApiKey.trim(), deepseekApiKey.trim(), deepseekBaseUrl.trim(), deepseekModel.trim());
+    
+    setNotification('అనుసంధాన సెట్టింగులు విజయవంతంగా భద్రపరచబడ్డాయి! తాజా కనెక్టివిటీ పరీక్షించబడుతోంది...');
     setTimeout(() => setNotification(null), 3500);
   };
 
@@ -1779,58 +1871,97 @@ export default function AdminPanel({
                   </div>
                 </div>
 
-                {/* 2. DeepSeek Key Port Configuration Form */}
+                {/* 2. DeepSeek & Gemini Key Port Configuration Form */}
                 <form onSubmit={handleSaveSettings} className="bg-orange-100 border border-orange-300 rounded-xl p-5 space-y-4">
                   <div className="flex items-start gap-3">
                     <div className="p-3 bg-orange-500/10 text-orange-400 rounded-xl border border-orange-500/20 shrink-0">
                       <Settings className="w-6 h-6" />
                     </div>
                     <div className="space-y-1">
-                      <h4 className="text-sm font-bold text-slate-900">డీప్‌సీక్ తాళం అనుసంధాన పోర్ట్ (DeepSeek API Port & Key)</h4>
+                      <h4 className="text-sm font-bold text-slate-900">ఏఐ మోడల్ అనుసంధాన తాళాలు (AI Model Credentials & Ports)</h4>
                       <p className="text-xs text-slate-800 leading-relaxed">
-                        ఇక్కడ డీప్‌సీక్ (DeepSeek) తాళాన్ని అమర్చడం ద్వారా చాట్ ఏజెంట్‌ను మరియు లైబ్రరీ రీడర్‌ను డీప్‌సీక్ ఇంటెలిజెన్స్ మోడల్‌కు అనుసంధానం చేయవచ్చు.
+                        ఇక్కడ డీప్‌సీక్ (DeepSeek) మరియు గూగుల్ జెమినీ (Google Gemini) తాళాలను అమర్చడం ద్వారా చాట్ ఏజెంట్లను మరియు లైబ్రరీ రీడర్‌ను అనుసంధానం చేయవచ్చు.
                       </p>
                     </div>
                   </div>
 
                   <div className="pt-4 border-t border-orange-300 space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-800 mb-1">
-                          డీప్‌సీక్ API కీ (DeepSeek API Key) *
-                        </label>
-                        <input
-                          type="password"
-                          value={deepseekApiKey}
-                          onChange={(e) => setDeepseekApiKey(e.target.value)}
-                          placeholder="sk-..."
-                          className="w-full bg-orange-100 border border-orange-300 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono"
-                          id="admin-deepseek-key-input"
-                        />
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-2 border-b border-orange-300/50 pb-1.5">
+                        <h5 className="text-xs font-black text-slate-900 flex items-center gap-1.5 uppercase tracking-wider">
+                          <Sparkles className="w-3.5 h-3.5 text-blue-600 animate-pulse" />
+                          <span>గూగుల్ జెమినీ అనుసంధానం (Google Gemini Config)</span>
+                        </h5>
+                        {renderStatusDot(geminiStatus)}
                       </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-800 mb-1">
-                          బేస్ URL (Base URL)
-                        </label>
-                        <input
-                          type="text"
-                          value={deepseekBaseUrl}
-                          onChange={(e) => setDeepseekBaseUrl(e.target.value)}
-                          placeholder="https://api.deepseek.com"
-                          className="w-full bg-orange-100 border border-orange-300 rounded-xl px-3.5 py-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono"
-                          id="admin-deepseek-url-input"
-                        />
+                      <div className="grid grid-cols-1 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-800 mb-1">
+                            గూగుల్ జెమినీ API కీ (Google Gemini API Key)
+                          </label>
+                          <input
+                            type="password"
+                            value={geminiApiKey}
+                            onChange={(e) => setGeminiApiKey(e.target.value)}
+                            placeholder="AIzaSy..."
+                            className="w-full bg-orange-100 border border-orange-300 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono"
+                            id="admin-gemini-key-input"
+                          />
+                          <span className="text-[10px] text-slate-600 mt-1 block">మీ సొంత లైవ్ సర్వర్‌లో జెమినీ ఏజెంట్ పని చేయాలంటే మీ Gemini API Key ని ఇక్కడ భద్రపరచండి.</span>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex justify-end pt-2">
+                    <div className="pt-4 border-t border-dashed border-orange-300 space-y-3">
+                      <div className="flex items-center justify-between gap-2 border-b border-orange-300/50 pb-1.5">
+                        <h5 className="text-xs font-black text-slate-900 flex items-center gap-1.5 uppercase tracking-wider">
+                          <Zap className="w-3.5 h-3.5 text-orange-600" />
+                          <span>డీప్‌సీక్ అనుసంధానం (DeepSeek Config)</span>
+                        </h5>
+                        {renderStatusDot(deepseekStatus)}
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-800 mb-1">
+                            డీప్‌సీక్ API కీ (DeepSeek API Key)
+                          </label>
+                          <input
+                            type="password"
+                            value={deepseekApiKey}
+                            onChange={(e) => setDeepseekApiKey(e.target.value)}
+                            placeholder="sk-..."
+                            className="w-full bg-orange-100 border border-orange-300 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono"
+                            id="admin-deepseek-key-input"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-800 mb-1">
+                            బేస్ URL (Base URL)
+                          </label>
+                          <input
+                            type="text"
+                            value={deepseekBaseUrl}
+                            onChange={(e) => setDeepseekBaseUrl(e.target.value)}
+                            placeholder="https://api.deepseek.com"
+                            className="w-full bg-orange-100 border border-orange-300 rounded-xl px-3.5 py-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono"
+                            id="admin-deepseek-url-input"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-2 border-t border-orange-300">
                       <button
                         type="submit"
-                        className="px-6 py-2.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-slate-900 text-xs font-bold rounded-xl transition shadow-lg shadow-orange-600/20"
+                        className={`px-6 py-2.5 text-xs font-bold rounded-xl transition-all duration-350 shadow-lg ${
+                          isSavedSuccessfully
+                            ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/25 scale-105 border border-emerald-400/30'
+                            : 'bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-slate-900 shadow-orange-600/20'
+                        }`}
                         id="admin-save-deepseek-btn"
                       >
-                        అనుసంధానాన్ని భద్రపరచు (Save Config)
+                        {isSavedSuccessfully ? 'భద్రపరచబడింది & పరీక్షించబడింది! ✓ (Saved & Tested)' : 'అнуసంధానాన్ని భద్రపరచు (Save Config)'}
                       </button>
                     </div>
                   </div>
