@@ -75,7 +75,11 @@ export interface Book {
   videoUrl?: string; // Direct video playback URL or YouTube/MP4 URL
   coverImage?: string;
   coverUrl?: string;
-  chapters: Chapter[];
+  chapters?: Chapter[];
+  content?: string;
+  text?: string;
+  body?: string;
+  pages?: string[];
   costToUnlock: number; // Credit cost to purchase/unlock
   costPerMinute: number; // Cost to read per minute
   isUnlocked?: boolean;

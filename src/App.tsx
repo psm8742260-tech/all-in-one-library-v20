@@ -168,6 +168,42 @@ export default function App() {
     });
   };
 
+  const handleOpenReader = async (book: Book) => {
+    // If book is missing chapters/content or has dummy text, fetch from Secure International Library
+    const hasDummyText = book.chapters?.some(ch => ch.content?.includes('ఉదాహరణ కోసం ఉంచబడిన పాఠ్యం'));
+    const isMissingContent = !book.chapters?.length && !book.content && !book.pages;
+    
+    if (hasDummyText || isMissingContent) {
+      try {
+        const res = await fetch('/api/fetch-secure-book', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: book.title })
+        });
+        
+        if (res.ok) {
+           const result = await res.json();
+           if (result.success && result.book) {
+              const realBookData = result.book;
+              const updatedBook = { ...book, ...realBookData, id: book.id, isUnlocked: book.isUnlocked };
+              
+              if (hasDummyText && !realBookData.chapters) {
+                delete updatedBook.chapters;
+              }
+
+              setBooks(prev => prev.map(b => b.id === book.id ? updatedBook : b));
+              setActiveBook(updatedBook);
+              return;
+           }
+        }
+      } catch (err) {
+        console.error("Internal sync error.", err);
+      }
+    }
+    
+    setActiveBook(book);
+  };
+
   // Save books to localStorage whenever updated
   useEffect(() => {
     try {
@@ -429,7 +465,7 @@ export default function App() {
           onDeleteTree={handleDeleteTree}
           currentLanguage={currentLanguage}
           onLanguageChange={setCurrentLanguage}
-          onOpenReader={setActiveBook}
+          onOpenReader={handleOpenReader}
         />
       )}
     </div>

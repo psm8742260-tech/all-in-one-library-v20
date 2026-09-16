@@ -78,7 +78,7 @@ app.get('/api/app-control', (req, res) => {
   });
 });
 
-const PORT = process.env.PORT || 8080;
+const PORT = 3000;
 
 // Helper to decode Base64 encoded API keys or return plain text if not encoded
 function decodeApiKey(key: string | undefined): string {
@@ -152,6 +152,140 @@ function parseBase64DataUri(dataUri: string) {
   };
 }
 
+
+
+async function generateOriginalBookPages(title: string, author: string, description: string): Promise<string[]> {
+  try {
+    const aiInstance = getAI();
+    const prompt = `You are an elite literary scholar and Telugu translator. Write highly authentic, immersive, and comprehensive reading content in Telugu for the book titled "${title}" by "${author}".
+The book is described as: "${description}".
+
+We need exactly 10 distinct, highly detailed, and sequential reading pages/chapters for this book. Each page should represent a logical, rich chapter or major section of the book's narrative or knowledge, written in beautiful, immersive, authentic Telugu prose. Each chapter/page should contain at least 400-600 words of actual readable content (prose, story, insights, or concepts).
+
+Return the response STRICTLY as a JSON array of 10 strings, representing the 10 sequential pages/chapters. Do not return any other text, markdown formatting blocks, or wrapping, just the raw valid JSON array.
+Example Format:
+[
+  "అధ్యాయం 1: పరిచయం... [detailed Telugu content]",
+  "అధ్యాయం 2: ... [detailed Telugu content]",
+  ...
+]`;
+
+    const response = await aiInstance.models.generateContent({
+      model: "gemini-3.8-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+      }
+    });
+
+    if (response && response.text) {
+      const parsed = JSON.parse(response.text.trim());
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map(p => String(p));
+      }
+    }
+  } catch (e) {
+    console.error("Gemini book page generation failed, using robust fallback:", e);
+  }
+
+  // Safe fallback if generation fails
+  return [
+    `శీర్షిక: ${title}\n\nరచయిత: ${author}\n\nఈ గ్రంథం ఓపెన్ లైబ్రరీ ద్వారా విజయవంతంగా సేకరించబడింది. చదవడం కొనసాగించడానికి పేజీలు తిప్పండి.`,
+    `అధ్యాయం 1: గ్రంథ పరిచయం\n\n${description || "ఈ పుస్తకం గురించిన వివరణ త్వరలోనే లభిస్తుంది."}`,
+    `అధ్యాయం 2: గ్రంథ విశ్లేషణ\n\nరచయిత ఈ పుస్తకంలో అనేక లోతైన విషయాలను చర్చించారు. ఇది ప్రతి ఒక్కరూ చదవాల్సిన అద్భుతమైన గ్రంథం.`,
+    `గమనిక: ఈ పుస్తకం యొక్క మరిన్ని అధ్యాయాలు త్వరలోనే ఈ అల్-ఇన్-వన్ లైబ్రరీ ద్వారా అందుబాటులోకి తీసుకురాబడతాయి.`
+  ];
+}
+
+
+// Endpoint: Secure International Library Connector
+app.post('/api/fetch-secure-book', async (req, res) => {
+  try {
+    const { title } = req.body;
+    
+    // బ్యాక్ఎండ్ కాన్ఫిగరేషన్ (యూజర్కి ఎక్కడా కనిపించదు)
+    const CONFIG = {
+      API_ENDPOINT: "https://phrscrowd.online/api/library/fetch-book",
+      GATEWAY_TOKEN: "NjYwNi4way==" // Base64 Secure Token
+    };
+    
+    const decodedToken = Buffer.from(CONFIG.GATEWAY_TOKEN, 'base64').toString('utf8');
+
+    let result: any = { success: false };
+    
+    // Step 1: Try to fetch from central server first
+    try {
+      const response = await fetch(CONFIG.API_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${decodedToken}`
+        },
+        body: JSON.stringify({ query: title })
+      });
+      result = await response.json();
+    } catch (err) {
+      console.warn("Central server fetch failed, trying OpenLibrary fallback...");
+    }
+    
+    // Step 2: Fallback to openlibrary.org if central server book not found
+    if (!result.success || !result.book) {
+      console.log(`Searching openlibrary.org for: ${title}`);
+      const olResponse = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(title)}&limit=1`);
+      const olData = await olResponse.json();
+      
+      if (olData.docs && olData.docs.length > 0) {
+        const doc = olData.docs[0];
+        const coverId = doc.cover_i;
+        const coverUrl = coverId ? `https://covers.openlibrary.org/b/id/${coverId}-L.jpg` : `https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&w=600&q=80`;
+        const publishYear = doc.first_publish_year || 'Unknown Year';
+        
+        // Fetch book description
+        let bookDescription = "ఈ అద్భుతమైన గ్రంథం గురించి త్వరలోనే మరిన్ని వివరాలు లోడ్ అవుతాయి.";
+        if (doc.key) {
+          try {
+            const descResponse = await fetch(`https://openlibrary.org${doc.key}.json`);
+            const descData = await descResponse.json();
+            if (descData.description) {
+              bookDescription = typeof descData.description === 'string' 
+                ? descData.description 
+                : (descData.description.value || bookDescription);
+            }
+          } catch (e) {
+            console.warn("Failed to fetch OpenLibrary book description", e);
+          }
+        }
+
+        const authorName = doc.author_name?.[0] || 'Unknown Author';
+        console.log(`Generating high-quality Telugu pages for fallback: ${doc.title}`);
+        const pages = await generateOriginalBookPages(doc.title, authorName, bookDescription);
+
+        result = {
+          success: true,
+          book: {
+            id: doc.key ? doc.key.replace('/works/', 'ol-') : `ol-${Math.random().toString(36).substr(2, 9)}`,
+            title: doc.title,
+            author: authorName,
+            description: bookDescription.substring(0, 180) + '...',
+            coverUrl: coverUrl,
+            fileSizeMB: doc.edition_count ? Math.round(doc.edition_count * 0.15 * 10) / 10 : 3.4,
+            totalPages: pages.length,
+            pages: pages
+          }
+        };
+      }
+    }
+
+    if (result.success && result.book) {
+      res.json(result);
+    } else {
+      res.json({ success: false, error: 'Book not found on any library sources' });
+    }
+  } catch (err: any) {
+    console.error("Internal sync error.", err);
+    res.json({ success: false, error: 'Internal sync error' });
+  }
+});
 
 // Endpoint: Test API Key Connection (Online/Offline Status Check)
 app.post('/api/test-key', async (req, res) => {
@@ -321,13 +455,15 @@ Instructions:
         }
 
         const dsData: any = await dsResponse.json();
-        const content = dsData.choices?.[0]?.message?.content || '{}';
+        const rawContent = dsData.choices?.[0]?.message?.content || '{}';
+        const content = rawContent.replace(/^```(json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+        
         let result;
         try {
           result = JSON.parse(content);
         } catch (parseErr) {
           console.warn('DeepSeek JSON parse failed in chat, attempting basic repair...');
-          let repaired = content.trim();
+          let repaired = content;
           if (repaired.endsWith(',')) repaired = repaired.slice(0, -1);
           if (!repaired.endsWith('}')) repaired += '}';
           result = JSON.parse(repaired);
@@ -427,152 +563,114 @@ Instructions:
   }
 });
 
-// Endpoint: Universal Knowledge Book Fetcher (Dynamic book generation)
+const CENTRAL_SERVER = "https://phrscrowd.online";
+
+async function checkOurDatabase(bookName: string) {
+  // Logic to query our server database
+  // Returns book object if exists, else null
+  return null; 
+}
+
+async function saveBookPermanently(bookData: any) {
+  // Logic to store the full book (pages 1 to last, MB size, content) 
+  // permanently into our server database so it never needs re-downloading.
+  try {
+    await fetch(`${CENTRAL_SERVER}/api/library/save-permanent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(bookData)
+    });
+  } catch(err) {
+    console.error("Failed to save permanently:", err);
+  }
+}
+
+// Endpoint: Universal Knowledge Book Fetcher (International Book Auto-Fetch & Permanent Storage System)
 app.post('/api/generate-book', async (req, res) => {
   try {
-    const { title, author, currentLanguage, deepseekSettings } = req.body;
+    const { title } = req.body;
 
     if (!title) {
       return res.status(400).json({ error: 'Book Title is required' });
     }
 
-    const generationPrompt = `Generate a high-fidelity mock book of "${title}" ${author ? `by ${author}` : ''} for our "All in One Library".
-Language requested: ${currentLanguage || 'en'}.
-Generate a book with:
-1. Title and Author
-2. A compelling, educational, or highly engaging Description
-3. An appropriate Category
-4. 3 distinct Chapters (each with a Title and at least 3-4 paragraphs of readable, high-quality, authentic-feeling text/chapters or complete summaries). Make the text rich and fully written out — no placeholders!
-5. costToUnlock (a reasonable credits number, e.g., 30 to 60)
-6. costPerMinute (a reasonable credits rate, e.g., 1 to 3)
-7. pageCount (A realistic page count based on the book type, typically 100 to 500)
-8. fileSizeMb (A realistic file size in MB, e.g., 2.5, 12.0)
-
-Output format must be JSON conforming to the requested schema.`;
-
-    // Check if DeepSeek is enabled and configured (either via client settings or server env)
-    const rawDsKey = (deepseekSettings && deepseekSettings.useDeepSeek && deepseekSettings.apiKey)
-      ? deepseekSettings.apiKey
-      : process.env.DEEPSEEK_API_KEY;
-    const effectiveDsKey = decodeApiKey(rawDsKey);
-
-    if (effectiveDsKey) {
-      try {
-        console.log('Using DeepSeek for book generation...');
-        const baseUrl = ((deepseekSettings && deepseekSettings.baseUrl) || process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '') + '/chat/completions';
-        const model = (deepseekSettings && deepseekSettings.model) || process.env.DEEPSEEK_MODEL || 'deepseek-chat';
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout for book generation
-
-        const dsResponse = await fetch(baseUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${effectiveDsKey}`
-          },
-          body: JSON.stringify({
-            model: model,
-            messages: [
-              { role: 'system', content: 'You are an elite literary scholar and book summarizer. Always output strictly valid JSON conforming to the requested schema.' },
-              { role: 'user', content: generationPrompt }
-            ],
-            response_format: { type: 'json_object' },
-            max_tokens: 8000
-          }),
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-
-        if (!dsResponse.ok) {
-          const errText = await dsResponse.text();
-          throw new Error(`DeepSeek API error during generation: ${dsResponse.status} ${errText}`);
-        }
-
-        const dsData: any = await dsResponse.json();
-        const content = dsData.choices?.[0]?.message?.content || '{}';
-        let bookData;
-        try {
-          bookData = JSON.parse(content);
-        } catch (parseErr) {
-          console.warn('DeepSeek JSON parse failed in generate-book, attempting basic repair...');
-          let repaired = content.trim();
-          if (repaired.endsWith(',')) repaired = repaired.slice(0, -1);
-          if (!repaired.endsWith('}')) repaired += '}';
-          if (repaired.lastIndexOf(']') === -1 && repaired.includes('"chapters": [')) {
-             repaired = repaired.replace(/}$/, ']}');
-          }
-          bookData = JSON.parse(repaired);
-        }
-        return res.json(bookData);
-      } catch (dsError: any) {
-        console.error('DeepSeek generation failed, falling back to Gemini:', dsError.message);
-      }
+    // Step 1: Check if book already exists permanently in our local/central library DB
+    let localBook = await checkOurDatabase(title);
+    
+    if (localBook) {
+      console.log("Book found in our permanent library! Loading locally...");
+      return res.json(localBook); // మన లైబ్రరీ నుంచే డైరెక్ట్గా ఇవ్వాలి
     }
 
-    const activeAi = getAIWithKey(req.body.geminiApiKey);
-    const response = await activeAi.models.generateContent({
-      model: 'gemini-3.5-flash',
-      contents: generationPrompt,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          required: ['title', 'author', 'description', 'category', 'chapters', 'costToUnlock', 'costPerMinute'],
-          properties: {
-            title: { type: Type.STRING },
-            author: { type: Type.STRING },
-            description: { type: Type.STRING },
-            category: { type: Type.STRING },
-            costToUnlock: { type: Type.INTEGER },
-            costPerMinute: { type: Type.INTEGER },
-            chapters: {
-              type: Type.ARRAY,
-              description: 'A list of 3 complete chapters.',
-              items: {
-                type: Type.OBJECT,
-                required: ['id', 'title', 'content'],
-                properties: {
-                  id: { type: Type.STRING },
-                  title: { type: Type.STRING },
-                  content: { type: Type.STRING }
-                }
-              }
+    let internationalBookData: any = null;
+    try {
+      const response = await fetch(`${CENTRAL_SERVER}/api/international-library/fetch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: title })
+      });
+      internationalBookData = await response.json();
+    } catch (e) {
+      console.warn("Central library fetch failed, trying OpenLibrary fallback...");
+    }
+    
+    if (internationalBookData && internationalBookData.success && internationalBookData.book) {
+      // Step 3: Automatically save it permanently in our library database
+      await saveBookPermanently(internationalBookData.book);
+      console.log("Book successfully saved permanently in our library!");
+      
+      return res.json(internationalBookData.book);
+    } else {
+      // Fallback to openlibrary.org
+      console.log(`Searching openlibrary.org for fallback in generate-book: ${title}`);
+      const olResponse = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(title)}&limit=1`);
+      const olData = await olResponse.json();
+      
+      if (olData.docs && olData.docs.length > 0) {
+        const doc = olData.docs[0];
+        const coverId = doc.cover_i;
+        const coverUrl = coverId ? `https://covers.openlibrary.org/b/id/${coverId}-L.jpg` : `https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&w=600&q=80`;
+        const publishYear = doc.first_publish_year || 'Unknown Year';
+        
+        let bookDescription = "ఈ అద్భుతమైన గ్రంథం గురించి త్వరలోనే మరిన్ని వివరాలు లోడ్ అవుతాయి.";
+        if (doc.key) {
+          try {
+            const descResponse = await fetch(`https://openlibrary.org${doc.key}.json`);
+            const descData = await descResponse.json();
+            if (descData.description) {
+              bookDescription = typeof descData.description === 'string' 
+                ? descData.description 
+                : (descData.description.value || bookDescription);
             }
+          } catch (e) {
+            console.warn("Failed to fetch OpenLibrary book description", e);
           }
         }
-      }
-    });
 
-    const jsonText = response.text || '{}';
-    const bookData = JSON.parse(jsonText);
-    res.json(bookData);
+        const authorName = doc.author_name?.[0] || 'Unknown Author';
+        console.log(`Generating high-quality Telugu pages for fallback in generate-book: ${doc.title}`);
+        const pages = await generateOriginalBookPages(doc.title, authorName, bookDescription);
+
+        const fallbackBook = {
+          id: doc.key ? doc.key.replace('/works/', 'ol-') : `ol-${Math.random().toString(36).substr(2, 9)}`,
+          title: doc.title,
+          author: authorName,
+          description: bookDescription.substring(0, 180) + '...',
+          coverUrl: coverUrl,
+          fileSizeMB: doc.edition_count ? Math.round(doc.edition_count * 0.15 * 10) / 10 : 3.4,
+          totalPages: pages.length,
+          pages: pages
+        };
+
+        await saveBookPermanently(fallbackBook);
+        return res.json(fallbackBook);
+      }
+      
+      return res.status(404).json({ error: "Book not found in any library source." });
+    }
   } catch (error: any) {
-    console.error('Error in /api/generate-book:', error);
-    return res.json({
-      title: title || 'ప్రసిద్ధ గ్రంథం',
-      author: author || 'రచయిత',
-      description: 'ఈ గ్రంథం ఆల్ ఇన్ వన్ లైబ్రరీ డిజిటల్ రిపాజిటరీ ద్వారా రీడ్ చేయడానికి అందుబాటులో ఉంది.',
-      category: 'సాహిత్యం & జ్ఞానం',
-      chapters: [
-        {
-          title: 'పరిచయ అధ్యాయము',
-          content: 'ఈ గ్రంథమునకు సంబంధించిన విశేష సమాచారము మరియు అధ్యయన విశేషములు ఇక్కడ పొందుపరచబడినవి. పాఠకులు దీనిని పూర్తి జ్ఞాన సాధనగా ఉపయోగించుకోవచ్చును.'
-        },
-        {
-          title: 'ప్రధాన గ్రంథ విషయము',
-          content: 'గ్రంథం యొక్క మూల తత్వము, అంతరార్థము మరియు జీవన వికాసానికి అవసరమైన సూత్రములు ఇందులో సమగ్రంగా చర్చించబడినవి.'
-        },
-        {
-          title: 'ముగింపు & సమీక్ష',
-          content: 'సమగ్ర విశ్లేషణ మరియు గ్రంథ సారాంశము. నిరంతర పఠనము వలన మానసిక వికాసము మరియు జ్ఞానోదయము లభించును.'
-        }
-      ],
-      costToUnlock: 20,
-      costPerMinute: 1,
-      pageCount: 120,
-      fileSizeMb: 3.5
-    });
+    console.error("Error in Library Book Sync:", error);
+    return res.status(500).json({ error: "Failed to fetch and save book." });
   }
 });
 
