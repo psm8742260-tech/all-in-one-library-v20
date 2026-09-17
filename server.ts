@@ -62,7 +62,7 @@ try {
 }
 
 const app = express();
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '100mb' }));
 
 // Health Check Endpoint for Cloud Run deployment checks
 app.get('/api/health', (req, res) => {
@@ -154,15 +154,17 @@ function parseBase64DataUri(dataUri: string) {
 
 
 
-async function generateOriginalBookPages(title: string, author: string, description: string): Promise<string[]> {
+async function generateOriginalBookPages(title: string, author: string, description: string, medianPages?: number): Promise<string[]> {
   try {
     const aiInstance = getAI();
+    const pageCount = medianPages ? Math.min(Math.max(Math.round(medianPages / 20), 5), 12) : 10;
     const prompt = `You are an elite literary scholar and Telugu translator. Write highly authentic, immersive, and comprehensive reading content in Telugu for the book titled "${title}" by "${author}".
 The book is described as: "${description}".
+This book historically has approximately ${medianPages || 150} pages in standard physical print.
 
-We need exactly 10 distinct, highly detailed, and sequential reading pages/chapters for this book. Each page should represent a logical, rich chapter or major section of the book's narrative or knowledge, written in beautiful, immersive, authentic Telugu prose. Each chapter/page should contain at least 400-600 words of actual readable content (prose, story, insights, or concepts).
+We need exactly ${pageCount} distinct, highly detailed, and sequential reading pages/chapters for this book. Each page should represent a logical, rich chapter or major section of the book's narrative or knowledge, written in beautiful, immersive, authentic Telugu prose. Each chapter/page should contain at least 400-600 words of actual readable content (prose, story, insights, or concepts).
 
-Return the response STRICTLY as a JSON array of 10 strings, representing the 10 sequential pages/chapters. Do not return any other text, markdown formatting blocks, or wrapping, just the raw valid JSON array.
+Return the response STRICTLY as a JSON array of ${pageCount} strings, representing the ${pageCount} sequential pages/chapters. Do not return any other text, markdown formatting blocks, or wrapping, just the raw valid JSON array.
 Example Format:
 [
   "అధ్యాయం 1: పరిచయం... [detailed Telugu content]",
@@ -245,7 +247,7 @@ app.post('/api/fetch-secure-book', async (req, res) => {
         if (doc.key) {
           try {
             const descResponse = await fetch(`https://openlibrary.org${doc.key}.json`);
-            const descData = await descResponse.json();
+            const descData = await descResponse.json() as any;
             if (descData.description) {
               bookDescription = typeof descData.description === 'string' 
                 ? descData.description 
@@ -258,7 +260,7 @@ app.post('/api/fetch-secure-book', async (req, res) => {
 
         const authorName = doc.author_name?.[0] || 'Unknown Author';
         console.log(`Generating high-quality Telugu pages for fallback: ${doc.title}`);
-        const pages = await generateOriginalBookPages(doc.title, authorName, bookDescription);
+        const pages = await generateOriginalBookPages(doc.title, authorName, bookDescription, doc.number_of_pages_median);
 
         result = {
           success: true,
@@ -507,10 +509,10 @@ Instructions:
       };
     });
 
-    // Generate response using gemini-3.5-flash (more available model)
+    // Generate response using gemini-3.8-flash (highly optimized modern model)
     const activeAi = getAIWithKey(req.body.geminiApiKey);
     const response = await activeAi.models.generateContent({
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.8-flash',
       contents: [
         { role: 'user', parts: [{ text: systemPrompt }] },
         ...chatMessages
@@ -636,7 +638,7 @@ app.post('/api/generate-book', async (req, res) => {
         if (doc.key) {
           try {
             const descResponse = await fetch(`https://openlibrary.org${doc.key}.json`);
-            const descData = await descResponse.json();
+            const descData = await descResponse.json() as any;
             if (descData.description) {
               bookDescription = typeof descData.description === 'string' 
                 ? descData.description 
@@ -649,7 +651,7 @@ app.post('/api/generate-book', async (req, res) => {
 
         const authorName = doc.author_name?.[0] || 'Unknown Author';
         console.log(`Generating high-quality Telugu pages for fallback in generate-book: ${doc.title}`);
-        const pages = await generateOriginalBookPages(doc.title, authorName, bookDescription);
+        const pages = await generateOriginalBookPages(doc.title, authorName, bookDescription, doc.number_of_pages_median);
 
         const fallbackBook = {
           id: doc.key ? doc.key.replace('/works/', 'ol-') : `ol-${Math.random().toString(36).substr(2, 9)}`,
