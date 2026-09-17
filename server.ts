@@ -78,7 +78,7 @@ app.get('/api/app-control', (req, res) => {
   });
 });
 
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 // Helper to decode Base64 encoded API keys or return plain text if not encoded
 function decodeApiKey(key: string | undefined): string {
