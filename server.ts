@@ -173,7 +173,7 @@ Example Format:
 ]`;
 
     const response = await aiInstance.models.generateContent({
-      model: "gemini-3.8-flash",
+      model: "gemini-1.5-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -200,94 +200,47 @@ Example Format:
 }
 
 
-// Endpoint: Secure International Library Connector
+// Endpoint: Direct Bridge Proxy Gateway
 app.post('/api/fetch-secure-book', async (req, res) => {
   try {
     const { title } = req.body;
     
-    // బ్యాక్ఎండ్ కాన్ఫిగరేషన్ (యూజర్కి ఎక్కడా కనిపించదు)
+    // Direct Bridge Proxy Gateway Configuration
     const CONFIG = {
-      API_ENDPOINT: "https://phrscrowd.online/api/library/fetch-book",
-      GATEWAY_TOKEN: "NjYwNi4way==" // Base64 Secure Token
+      API_ENDPOINT: "https://phrscrowd.online/api/fetch-secure-book",
+      GATEWAY_TOKEN: "NjYwNi40way=" // Base64 Secure Token
     };
     
     const decodedToken = Buffer.from(CONFIG.GATEWAY_TOKEN, 'base64').toString('utf8');
-
-    let result: any = { success: false };
     
-    // Step 1: Try to fetch from central server first
-    try {
-      const response = await fetch(CONFIG.API_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${decodedToken}`
-        },
-        body: JSON.stringify({ query: title })
-      });
-      result = await response.json();
-    } catch (err) {
-      console.warn("Central server fetch failed, trying OpenLibrary fallback...");
+    // Establishing direct bridge
+    const response = await fetch(CONFIG.API_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${decodedToken}`
+      },
+      body: JSON.stringify({ title })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Gateway communication failed with status: ${response.status}`);
     }
+
+    const bookData = await response.json();
     
-    // Step 2: Fallback to openlibrary.org if central server book not found
-    if (!result.success || !result.book) {
-      console.log(`Searching openlibrary.org for: ${title}`);
-      const olResponse = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(title)}&limit=1`);
-      const olData = await olResponse.json();
-      
-      if (olData.docs && olData.docs.length > 0) {
-        const doc = olData.docs[0];
-        const coverId = doc.cover_i;
-        const coverUrl = coverId ? `https://covers.openlibrary.org/b/id/${coverId}-L.jpg` : `https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&w=600&q=80`;
-        const publishYear = doc.first_publish_year || 'Unknown Year';
-        
-        // Fetch book description
-        let bookDescription = "ఈ అద్భుతమైన గ్రంథం గురించి త్వరలోనే మరిన్ని వివరాలు లోడ్ అవుతాయి.";
-        if (doc.key) {
-          try {
-            const descResponse = await fetch(`https://openlibrary.org${doc.key}.json`);
-            const descData = await descResponse.json() as any;
-            if (descData.description) {
-              bookDescription = typeof descData.description === 'string' 
-                ? descData.description 
-                : (descData.description.value || bookDescription);
-            }
-          } catch (e) {
-            console.warn("Failed to fetch OpenLibrary book description", e);
-          }
-        }
+    // Mirroring data directly back to reader
+    res.json({ success: true, ...bookData });
 
-        const authorName = doc.author_name?.[0] || 'Unknown Author';
-        console.log(`Generating high-quality Telugu pages for fallback: ${doc.title}`);
-        const pages = await generateOriginalBookPages(doc.title, authorName, bookDescription, doc.number_of_pages_median);
-
-        result = {
-          success: true,
-          book: {
-            id: doc.key ? doc.key.replace('/works/', 'ol-') : `ol-${Math.random().toString(36).substr(2, 9)}`,
-            title: doc.title,
-            author: authorName,
-            description: bookDescription.substring(0, 180) + '...',
-            coverUrl: coverUrl,
-            fileSizeMB: doc.edition_count ? Math.round(doc.edition_count * 0.15 * 10) / 10 : 3.4,
-            totalPages: pages.length,
-            pages: pages
-          }
-        };
-      }
-    }
-
-    if (result.success && result.book) {
-      res.json(result);
-    } else {
-      res.json({ success: false, error: 'Book not found on any library sources' });
-    }
-  } catch (err: any) {
-    console.error("Internal sync error.", err);
-    res.json({ success: false, error: 'Internal sync error' });
+  } catch (error) {
+    console.error("Direct Bridge Proxy Gateway Error:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Secure library connection could not be established." 
+    });
   }
 });
+
 
 // Endpoint: Test API Key Connection (Online/Offline Status Check)
 app.post('/api/test-key', async (req, res) => {
@@ -509,10 +462,10 @@ Instructions:
       };
     });
 
-    // Generate response using gemini-3.8-flash (highly optimized modern model)
+    // Generate response using gemini-1.5-flash (highly optimized modern model)
     const activeAi = getAIWithKey(req.body.geminiApiKey);
     const response = await activeAi.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model: 'gemini-1.5-flash',
       contents: [
         { role: 'user', parts: [{ text: systemPrompt }] },
         ...chatMessages
