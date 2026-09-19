@@ -3,9 +3,13 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   ArrowLeft, ChevronLeft, ChevronRight, Type as FontIcon, 
   Search, Info, Clock, Coins, Lock, Sparkles, CheckCircle2, Play, Square, ZoomIn, ZoomOut,
-  Mic, Film, Music, Volume2, Video
+  Mic, Film, Music, Volume2, Video, Star, MoreVertical, FileText
 } from 'lucide-react';
 import { Book, LanguageCode, TRANSLATIONS } from '../types';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Configure PDF.js worker path utilizing CDN for pure standard execution
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
 interface ReaderProps {
   book: Book;
@@ -26,10 +30,103 @@ export default function Reader({ book, credits, onClose, onDeductCredits, curren
   const [accumulatedDeductions, setAccumulatedDeductions] = useState(0);
   const [isSpeaking, setIsSpeaking] = useState(false);
 
+  // Robustly extract the active chapter or mock a chapter if raw text is provided instead of a structured array
+  const currentChapter: any = book.chapters && book.chapters.length > 0 
+    ? (book.chapters[activeChapterIndex] || book.chapters[0]) 
+    : (book.content || book.text || book.body || book.pages ? { title: book.title, content: Array.isArray(book.pages) ? book.pages.join('\n\n') : (book.content || book.text || book.body || '') } : null);
+
+  // Detect PDF URL inside book content, text, body, chapter, description
+  const pdfUrlMatch = 
+    (typeof currentChapter?.content === 'string' && currentChapter.content.match(/(https?:\/\/|\/uploads\/)[^\s"']+\.pdf/i)) ||
+    (typeof book.content === 'string' && book.content.match(/(https?:\/\/|\/uploads\/)[^\s"']+\.pdf/i)) ||
+    (typeof book.text === 'string' && book.text.match(/(https?:\/\/|\/uploads\/)[^\s"']+\.pdf/i)) ||
+    (typeof book.body === 'string' && book.body.match(/(https?:\/\/|\/uploads\/)[^\s"']+\.pdf/i)) ||
+    (typeof book.description === 'string' && book.description.match(/(https?:\/\/|\/uploads\/)[^\s"']+\.pdf/i));
+
+  const pdfUrl = pdfUrlMatch ? pdfUrlMatch[0] : null;
+
+  // PDF.js rendering engine states
+  const [pdfDoc, setPdfDoc] = useState<any>(null);
+  const [pdfLoading, setPdfLoading] = useState<boolean>(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const [pdfScale, setPdfScale] = useState<number>(1.25);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
   // Reset page index when chapter changes
   useEffect(() => {
     setActivePageIndex(0);
   }, [activeChapterIndex]);
+
+  // Load PDF Document when pdfUrl changes
+  useEffect(() => {
+    if (!pdfUrl) {
+      setPdfDoc(null);
+      return;
+    }
+
+    let isMounted = true;
+    setPdfLoading(true);
+    setPdfError(null);
+
+    const loadingTask = pdfjsLib.getDocument({ url: pdfUrl });
+    loadingTask.promise.then(
+      (loadedPdf) => {
+        if (!isMounted) return;
+        setPdfDoc(loadedPdf);
+        setPdfLoading(false);
+      },
+      (err) => {
+        if (!isMounted) return;
+        console.error("Error loading PDF: ", err);
+        setPdfError(err.message || "PDF లోడ్ చేయడంలో లోపం సంభవించింది.");
+        setPdfLoading(false);
+      }
+    );
+
+    return () => {
+      isMounted = false;
+    };
+  }, [pdfUrl]);
+
+  // Programmatically render the active PDF page on canvas
+  useEffect(() => {
+    if (!pdfDoc) return;
+
+    const pageNum = activePageIndex + 1;
+    if (pageNum < 1 || pageNum > pdfDoc.numPages) return;
+
+    let renderTask: any = null;
+
+    pdfDoc.getPage(pageNum).then((page: any) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const context = canvas.getContext('2d');
+      if (!context) return;
+
+      const viewport = page.getViewport({ scale: pdfScale });
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+
+      const renderContext = {
+        canvasContext: context,
+        viewport: viewport,
+      };
+
+      renderTask = page.render(renderContext);
+      renderTask.promise.catch((err: any) => {
+        if (err.name !== 'RenderingCancelledException') {
+          console.error("Page render error:", err);
+        }
+      });
+    });
+
+    return () => {
+      if (renderTask) {
+        renderTask.cancel();
+      }
+    };
+  }, [pdfDoc, activePageIndex, pdfScale]);
 
   const getTotalCharacters = () => {
     if (book.chapters && book.chapters.length > 0) {
@@ -49,11 +146,6 @@ export default function Reader({ book, credits, onClose, onDeductCredits, curren
 
   const t = TRANSLATIONS[currentLanguage];
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Robustly extract the active chapter or mock a chapter if raw text is provided instead of a structured array
-  const currentChapter: any = book.chapters && book.chapters.length > 0 
-    ? (book.chapters[activeChapterIndex] || book.chapters[0]) 
-    : (book.content || book.text || book.body || book.pages ? { title: book.title, content: Array.isArray(book.pages) ? book.pages.join('\n\n') : (book.content || book.text || book.body || '') } : null);
 
   // Text to speech narration toggle
   const toggleSpeechNarration = () => {
@@ -139,12 +231,16 @@ export default function Reader({ book, credits, onClose, onDeductCredits, curren
 
   // --- Robust Pagination Engine (Array & String) ---
   const isDirectPagesArray = Array.isArray(book.pages) && book.pages.length > 0;
-  
+
   let totalPages = 1;
   let activeParagraphs: string[] = [];
   let allParagraphsCount = 0;
 
-  if (isDirectPagesArray) {
+  if (pdfUrl) {
+    totalPages = pdfDoc ? pdfDoc.numPages : (book.pageCount || 1);
+    activeParagraphs = [];
+    allParagraphsCount = 0;
+  } else if (isDirectPagesArray) {
     totalPages = book.pages!.length;
     const pageContent = book.pages![activePageIndex] || "ఈ పేజీలో కంటెంట్ ఖాళీగా ఉంది.";
     activeParagraphs = typeof pageContent === 'string' ? pageContent.split(/\n+/).filter(p => p.trim()) : [String(pageContent)];
@@ -171,7 +267,7 @@ export default function Reader({ book, credits, onClose, onDeductCredits, curren
     }
     
     allParagraphsCount = allParagraphs.length;
-    const PARAGRAPHS_PER_PAGE = 4;
+    const PARAGRAPHS_PER_PAGE = Math.max(1, allParagraphsCount);
     totalPages = Math.max(1, Math.ceil(allParagraphs.length / PARAGRAPHS_PER_PAGE));
     activeParagraphs = allParagraphs.slice(activePageIndex * PARAGRAPHS_PER_PAGE, (activePageIndex + 1) * PARAGRAPHS_PER_PAGE);
   }
@@ -207,112 +303,42 @@ export default function Reader({ book, credits, onClose, onDeductCredits, curren
   };
 
   return (
-    <div className={`flex flex-col h-full relative ${getThemeClasses()}`}>
-      {/* Reader header */}
-      <header className={`flex justify-between items-center px-4 py-3 border-b shadow-xs z-10 ${theme === 'dark' ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-200'}`}>
-        <div className="flex items-center gap-3">
+    <div className={`flex flex-col h-full relative ${theme === 'dark' ? 'bg-slate-900' : 'bg-slate-50'}`}>
+      {/* Reader header - Re-designed to match PDF Style */}
+      <header className={`flex justify-between items-center px-4 py-3 border-b shadow-xs z-30 sticky top-0 ${theme === 'dark' ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-200'}`}>
+        <div className="flex items-center gap-4">
           <button 
             onClick={onClose}
-            className={`group flex items-center gap-1.5 p-1 px-2.5 border rounded-xl transition-all active:scale-90 ${theme === 'dark' ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700'}`}
+            className={`p-1 rounded-full transition-all active:scale-90 ${theme === 'dark' ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-700'}`}
             id="reader-back-btn"
-            title="Go back to Library"
           >
-            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
-            <span className="text-xs font-bold pr-0.5">Back</span>
+            <ArrowLeft className="w-6 h-6" />
           </button>
           
-          <div className="flex items-center gap-2">
-            {(book.coverUrl || book.coverImage) && (
-              <img 
-                src={book.coverUrl || book.coverImage} 
-                alt={book.title} 
-                className="w-8 h-10 object-cover rounded shadow-sm border border-slate-200"
-                referrerPolicy="no-referrer"
-              />
-            )}
-            <div>
-              <h3 className={`font-serif font-bold text-sm line-clamp-1 ${theme === 'dark' ? 'text-slate-200' : 'text-slate-950'}`}>{book.title}</h3>
-              <p className="text-xs text-slate-500 line-clamp-1">{book.author}</p>
-            </div>
+          <div className="flex flex-col">
+            <h3 className={`font-sans font-semibold text-base line-clamp-1 ${theme === 'dark' ? 'text-slate-200' : 'text-slate-900'}`}>
+              {book.title}
+            </h3>
           </div>
         </div>
 
-        {/* Action controllers */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* Theme Controls */}
-          <div className={`hidden sm:flex items-center rounded-lg p-0.5 border ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
-            <button onClick={() => setTheme('light')} className={`p-1 rounded ${theme === 'light' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`} title="Light Theme"><div className="w-3 h-3 rounded-full bg-slate-200 border border-slate-300"></div></button>
-            <button onClick={() => setTheme('sepia')} className={`p-1 rounded ${theme === 'sepia' ? 'bg-white shadow text-amber-900' : 'text-slate-500'}`} title="Sepia Theme"><div className="w-3 h-3 rounded-full bg-amber-100 border border-amber-300"></div></button>
-            <button onClick={() => setTheme('dark')} className={`p-1 rounded ${theme === 'dark' ? 'bg-slate-600 shadow text-white' : 'text-slate-500'}`} title="Dark Theme"><div className="w-3 h-3 rounded-full bg-slate-900 border border-slate-700"></div></button>
-          </div>
-
-          {/* Universal Audio/Speaker Narration Button */}
-          <button
-            onClick={toggleSpeechNarration}
-            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition border shadow-xs ${
-              isSpeaking
-                ? 'bg-amber-500 text-slate-950 border-orange-400 animate-pulse'
-                : theme === 'dark' ? 'bg-indigo-900 text-indigo-300 hover:bg-indigo-800 border-indigo-700' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200'
-            }`}
-            title="స్పీకర్‌లో అధ్యాయం వినండి (Listen via Speaker)"
-            id="reader-speaker-narration-btn"
-          >
-            <Volume2 className="w-4 h-4" />
-            <span className="hidden sm:inline">{isSpeaking ? 'ఆపు' : 'వినండి'}</span>
+        <div className="flex items-center gap-3">
+          <button className={`p-2 rounded-full ${theme === 'dark' ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}>
+            <Sparkles className="w-5 h-5" />
           </button>
-
-          {/* Font Controls */}
-          <button 
-            onClick={() => setFontSize(prev => Math.max(14, prev - 2))}
-            className={`p-1.5 rounded ${theme === 'dark' ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-600'}`}
-            title="Decrease size"
-            id="font-decrease-btn"
-          >
-            <ZoomOut className="w-4 h-4" />
+          <button className={`p-2 rounded-full ${theme === 'dark' ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}>
+            <Search className="w-5 h-5" />
           </button>
-          <button 
-            onClick={() => setFontSize(prev => Math.min(26, prev + 2))}
-            className={`p-1.5 rounded ${theme === 'dark' ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-600'}`}
-            title="Increase size"
-            id="font-increase-btn"
-          >
-            <ZoomIn className="w-4 h-4" />
-          </button>
-
-          {/* Session Controller */}
-          <button
-            onClick={() => {
-              if (isReadingSessionActive) {
-                setIsReadingSessionActive(false);
-              } else {
-                if (credits < book.costPerMinute) {
-                  alert(t.insufficientCredits);
-                } else {
-                  setIsReadingSessionActive(true);
-                }
-              }
-            }}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition ${
-              isReadingSessionActive 
-                ? 'bg-red-500 text-slate-900 hover:bg-red-600' 
-                : 'bg-emerald-600 text-slate-900 hover:bg-emerald-700'
-            }`}
-            id="reading-session-toggle"
-          >
-            {isReadingSessionActive ? (
-              <>
-                <Square className="w-3.5 h-3.5 fill-current" />
-                <span>{t.stopReading}</span>
-              </>
-            ) : (
-              <>
-                <Play className="w-3.5 h-3.5 fill-current" />
-                <span>{t.startReading}</span>
-              </>
-            )}
+          <button className={`p-2 rounded-full ${theme === 'dark' ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}>
+            <MoreVertical className="w-5 h-5" />
           </button>
         </div>
       </header>
+
+      {/* Floating Page Counter - Matches Screenshot */}
+      <div className="absolute top-20 right-6 z-40 bg-black/60 backdrop-blur-md text-white text-[11px] font-bold px-3 py-1 rounded-full shadow-lg pointer-events-none">
+        {activePageIndex + 1} / {totalPages}
+      </div>
 
       {/* Sample Mode Golden Banner */}
       {book.isSampleMode && (
@@ -392,113 +418,132 @@ export default function Reader({ book, credits, onClose, onDeductCredits, curren
         </div>
       </div>
 
-      {/* Book Body */}
-      <div className="flex-1 overflow-y-auto px-6 py-8 relative scroll-smooth">
-        <div className="max-w-2xl mx-auto">
-          {/* Main Book Cover inside Reader */}
-          {(book.coverUrl || book.coverImage) && (
-            <div className="flex flex-col items-center mb-8">
-              <img 
-                src={book.coverUrl || book.coverImage} 
-                alt={book.title} 
-                className="w-32 h-44 sm:w-40 sm:h-56 object-cover rounded-lg shadow-lg border border-slate-200 mb-4"
-                referrerPolicy="no-referrer"
-              />
-              <div className="flex items-center gap-3 text-[11px] font-bold bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-full text-slate-600 shadow-sm">
-                <span>📄 పేజీలు: {book.pageCount || Math.floor(Math.random() * 200 + 50)} Pages</span>
-                <span className="w-1 h-1 rounded-full bg-slate-300" />
-                <span>💾 ఫైల్ సైజు: {book.fileSizeMb || (Math.random() * 5 + 1).toFixed(1)} MB</span>
-                <span className="w-1 h-1 rounded-full bg-slate-300" />
-                <span className="text-red-600">PDF ఫార్మాట్</span>
+      {/* Book Body - Styled as white paper pages */}
+      <div className="flex-1 overflow-y-auto px-2 sm:px-4 py-6 relative scroll-smooth bg-slate-200/40">
+        <div className="max-w-4xl mx-auto space-y-6">
+          {/* Main Book Cover Card */}
+          {(book.coverUrl || book.coverImage) && activePageIndex === 0 && (
+            <div className="bg-white rounded-lg shadow-md overflow-hidden border border-slate-200">
+               <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Book Cover</span>
+                  <div className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">PDF Mode</div>
+               </div>
+               <div className="flex flex-col items-center py-10 px-6">
+                <img 
+                  src={book.coverUrl || book.coverImage} 
+                  alt={book.title} 
+                  className="w-48 h-64 sm:w-64 sm:h-80 object-cover rounded shadow-2xl border-4 border-white mb-6"
+                  referrerPolicy="no-referrer"
+                />
+                <h2 className="text-xl font-bold text-slate-900 text-center mb-2">{book.title}</h2>
+                <p className="text-sm text-slate-500 mb-6">{book.author}</p>
+                <div className="flex items-center gap-3 text-[11px] font-bold bg-slate-50 border border-slate-100 px-4 py-2 rounded-full text-slate-500">
+                  <span>📄 {book.pageCount || totalPages} Pages</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-200" />
+                  <span>💾 {book.fileSizeMb || (Math.random() * 5 + 1).toFixed(1)} MB</span>
+                </div>
               </div>
             </div>
           )}
 
-          {/* Chapter Heading */}
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <span className={`text-xs uppercase tracking-widest font-semibold ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
-                {book.category}
-              </span>
-              {(book.contentType === 'audio' || currentChapter?.audioUrl) && (
-                <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 border border-purple-200">
-                  <Mic className="w-3 h-3" /> వాయిస్ కథ (Audio)
-                </span>
-              )}
-              {(book.contentType === 'video' || currentChapter?.videoUrl) && (
-                <span className="text-[10px] bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 border border-rose-200">
-                  <Film className="w-3 h-3" /> వీడియో కథ (Video)
-                </span>
-              )}
-            </div>
-
-            <h1 className="text-2xl font-serif font-bold text-slate-900 mt-1 mb-4">
-              {currentChapter?.title || book.title || 'Unknown Chapter'}
-            </h1>
-            <div className="h-0.5 w-16 bg-amber-200 mx-auto" />
-          </div>
-
-          {/* Audio Story Player */}
-          {(book.audioUrl || currentChapter?.audioUrl) && (
-            <div className="mb-8 p-4 bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-2xl shadow-sm">
-              <div className="flex items-center gap-3 mb-2.5">
-                <div className="p-2 bg-purple-600 text-slate-900 rounded-xl shadow">
-                  <Volume2 className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-purple-950">వాయిస్ కథ వినండి (Play Voice Audio)</h4>
-                  <p className="text-[11px] text-purple-700">రచయిత వాయిస్ రికార్డింగ్</p>
-                </div>
-              </div>
-              <audio 
-                src={currentChapter?.audioUrl || book.audioUrl} 
-                controls 
-                className="w-full h-10"
-              />
-            </div>
-          )}
-
-          {/* Video Story Player */}
-          {(book.videoUrl || currentChapter?.videoUrl) && (
-            <div className="mb-8 p-4 bg-gradient-to-r from-rose-50 to-orange-50 border border-rose-200 rounded-2xl shadow-sm">
-              <div className="flex items-center gap-3 mb-2.5">
-                <div className="p-2 bg-rose-600 text-slate-900 rounded-xl shadow">
-                  <Video className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-rose-950">వీడియో కథను వీక్షించండి (Watch Video Story)</h4>
-                  <p className="text-[11px] text-rose-700">రచయిత వీడియో కథనం</p>
-                </div>
-              </div>
-              <video 
-                src={currentChapter?.videoUrl || book.videoUrl} 
-                controls 
-                className="w-full max-h-80 rounded-xl bg-orange-100 shadow-md object-contain"
-              />
-            </div>
-          )}
-
-          {/* Chapter Text */}
+          {/* Individual Page View (Matches Screenshot Layout) */}
           <motion.div 
             key={`${activeChapterIndex}-${activePageIndex}`}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3 }}
-            className="prose select-text min-h-[300px]"
+            initial={{ rotateY: -30, opacity: 0, transformOrigin: "left center" }}
+            animate={{ rotateY: 0, opacity: 1 }}
+            exit={{ rotateY: 30, opacity: 0 }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+            className="bg-white rounded shadow-sm border border-slate-200 min-h-[800px] flex flex-col relative overflow-hidden perspective-1000"
           >
-            {activeParagraphs.map((p, i) => renderParagraph(p, i))}
-
-            {/* If there is no chapter text */}
-            {allParagraphsCount === 0 && !book.audioUrl && !book.videoUrl && (
-              <div className="text-center py-12 text-slate-400 font-serif">
-                ఈ పుస్తకానికి (లేదా అధ్యాయానికి) సంబంధించిన పాఠ్యం అందుబాటులో లేదు. (No text content available)
+            {/* Page Internal Header */}
+            <div className="px-8 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-2">
+                 <FileText className="w-4 h-4 text-slate-400" />
+                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate max-w-[200px]">
+                   {book.title}
+                 </span>
               </div>
-            )}
+              <div className="text-[10px] font-bold text-slate-400">
+                PAGE {activePageIndex + 1}
+              </div>
+            </div>
+
+            {/* Content Area */}
+            <div className="p-8 sm:p-12 flex-1 flex flex-col">
+               {/* Chapter Heading (if page 1) */}
+               {activePageIndex === 0 && !pdfUrl && (
+                  <div className="text-center mb-12">
+                     <h1 className="text-2xl font-serif font-bold text-slate-900 mb-4">
+                        {currentChapter?.title || book.title}
+                     </h1>
+                     <div className="h-0.5 w-16 bg-amber-200 mx-auto" />
+                  </div>
+               )}
+
+               {pdfUrl ? (
+                 <div className="w-full flex-1 flex flex-col items-center select-none bg-slate-50/50 p-4 rounded-2xl border border-slate-100 shadow-inner z-10">
+                   {pdfLoading && (
+                     <div className="flex flex-col items-center justify-center py-20 gap-3">
+                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
+                       <span className="text-xs font-semibold text-slate-500">పుస్తకాన్ని లోడ్ చేస్తున్నాము, దయచేసి వేచి ఉండండి...</span>
+                     </div>
+                   )}
+                   {pdfError && (
+                     <div className="text-center py-16 text-red-500 font-medium">
+                       {pdfError}
+                     </div>
+                   )}
+                   
+                   {!pdfLoading && !pdfError && (
+                     <div className="w-full flex flex-col items-center">
+                       {/* PDF Scale / Zoom Controllers */}
+                       <div className="flex items-center gap-4 mb-4 bg-white/80 backdrop-blur-xs px-3 py-1.5 rounded-full border border-slate-200 shadow-sm shrink-0 z-10">
+                         <button 
+                           onClick={() => setPdfScale(s => Math.max(0.6, s - 0.15))}
+                           disabled={pdfScale <= 0.6}
+                           className="p-1 hover:bg-slate-100 disabled:opacity-30 rounded-full text-slate-600 transition flex items-center justify-center"
+                           title="Zoom Out"
+                         >
+                           <ZoomOut className="w-4 h-4" />
+                         </button>
+                         <span className="text-xs font-mono font-bold text-slate-700 min-w-[40px] text-center">
+                           {Math.round(pdfScale * 100)}%
+                         </span>
+                         <button 
+                           onClick={() => setPdfScale(s => Math.min(2.5, s + 0.15))}
+                           disabled={pdfScale >= 2.5}
+                           className="p-1 hover:bg-slate-100 disabled:opacity-30 rounded-full text-slate-600 transition flex items-center justify-center"
+                           title="Zoom In"
+                         >
+                           <ZoomIn className="w-4 h-4" />
+                         </button>
+                       </div>
+
+                       {/* Canvas PDF Viewer container */}
+                       <div className="w-full overflow-x-auto py-2 flex justify-center bg-white border border-slate-200/60 rounded-xl shadow-xs">
+                         <canvas 
+                           ref={canvasRef} 
+                           className="max-w-full shadow-lg rounded-sm border border-slate-100"
+                         />
+                       </div>
+                     </div>
+                   )}
+                 </div>
+               ) : (
+                 <div className="prose prose-slate max-w-none select-text">
+                    {activeParagraphs.map((p, i) => renderParagraph(p, i))}
+                 </div>
+               )}
+            </div>
+
+            {/* Page Footer */}
+            <div className="px-8 py-4 border-t border-slate-50 text-center text-[10px] font-bold text-slate-300">
+               {activePageIndex + 1}
+            </div>
           </motion.div>
 
           {/* Internal Page Pagination */}
-          {allParagraphsCount > 0 && (
+          {(allParagraphsCount > 0 || pdfUrl) && (
             <div className="flex justify-between items-center mt-8 pt-6 border-t border-slate-200/50">
                <button 
                   onClick={() => {

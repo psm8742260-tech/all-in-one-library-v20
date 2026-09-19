@@ -57,7 +57,12 @@ export default function App() {
     try {
       const saved = localStorage.getItem('library_all_books');
       if (saved) {
-        loadedBooks = JSON.parse(saved);
+        const parsedBooks: Book[] = JSON.parse(saved);
+        // Filter out dummy book IDs that no longer belong in the library
+        loadedBooks = parsedBooks.filter(b => 
+          !b.id.startsWith('gen-book-') && 
+          !['panchatantra-stories', 'vedic-mantras-spirituality', 'indian-culture-heritage', 'aryabhata-science-tech', 'gitanjali-literature', 'art-of-war'].includes(b.id)
+        );
         hasLoaded = true;
       }
     } catch (e) {
@@ -178,7 +183,7 @@ export default function App() {
         const res = await fetch('/api/fetch-secure-book', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: book.title })
+          body: JSON.stringify({ title: book.title, id: book.folderId || book.id })
         });
         
         if (res.ok) {

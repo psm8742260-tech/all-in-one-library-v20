@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   ShieldCheck, Upload, Trash2, Plus, X, BookOpen, AlertCircle, 
-  Check, Lock, Sparkles, FolderPlus, Settings, Users, Bot, Zap,
+  Check, Lock, Sparkles, FolderPlus, Settings, Users, Bot, Zap, Folder as FolderIcon,
   QrCode, IndianRupee, CheckCircle2, Copy, Mic, Film, Play, Music, Radio, Globe, Youtube
 } from 'lucide-react';
 import { Book, Folder, User, LanguageCode, TRANSLATIONS, WriterApplication, ContentType, RegisteredTree } from '../types';
@@ -97,7 +97,69 @@ export default function AdminPanel({
   const [editBookTitle, setEditBookTitle] = useState('');
   const [editBookAuthor, setEditBookAuthor] = useState('');
   const [editBookCost, setEditBookCost] = useState<number>(0);
-  const [activeManageFolder, setActiveManageFolder] = useState<'general' | 'palm'>('general');
+  const [activeManageFolder, setActiveManageFolder] = useState<'general' | 'palm' | 'trash' | null>(null);
+  const [isUploadSuccess, setIsUploadSuccess] = useState(false);
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Admin Storage: File Upload Logic
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAdminFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    setNotification('ఫైల్ అప్‌లోడ్ అవుతోంది... (Uploading to Admin Quarter)');
+
+    try {
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const url = data.url;
+        
+        // Auto-assign to General folder and set metadata
+        setFolderId('fol-general'); 
+        
+        const isImage = file.type.startsWith('image/');
+        if (contentType === 'audio') setAudioUrl(url);
+        else if (contentType === 'video') setVideoUrl(url);
+        else if (isImage) setCoverImage(url);
+        else {
+          setDescription(prev => `${prev}\n[System: File saved at ${url}]`);
+          setChapters([{ title: `అప్‌లోడ్ చేసిన ఫైల్: ${file.name}`, content: `ఈ పుస్తకం యొక్క ఫైల్ ఇక్కడ భద్రపరచబడింది: ${url}` }]);
+        }
+        
+        const autoTitle = data.fileName?.split('.')[0] || file.name.split('.')[0];
+        setTitle(autoTitle);
+        setNotification('✅ ఫైల్ సిద్ధంగా ఉంది. మీరు సేవ్ చేయండి లేదా 10 నిమిషాల్లో ఆటోమేటిక్ గా సేవ్ అవుతుంది.');
+
+        // 10-MINUTE DELAYED AUTO-SAVE LOGIC
+        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+        
+        autoSaveTimerRef.current = setTimeout(() => {
+          // Trigger manual submit logic if still on the board and not already saved
+          const submitBtn = document.getElementById('admin-submit-upload-btn');
+          if (submitBtn) {
+            console.log('[Smart Agent] 10 minutes passed. Auto-saving book now...');
+            submitBtn.click();
+          }
+        }, 10 * 60 * 1000); // 10 minutes (600,000ms)
+
+        setTimeout(() => setNotification(null), 6000);
+      } else {
+        setNotification('❌ అప్‌లోడ్ విఫలమైంది. ఫైల్ సైజు తనిఖీ చేయండి.');
+      }
+    } catch (err) {
+      console.error('Upload error:', err);
+      setNotification('❌ సర్వర్ కనెక్షన్ లోపం.');
+    }
+  };
 
   // Pricing & UPI QR Settings State
   const [readPriceINR, setReadPriceINR] = useState<number>(() => {
@@ -553,7 +615,7 @@ export default function AdminPanel({
     }
 
     const newBook: Book = {
-      id: `book-${Date.now()}`,
+      id: editingBookId || `book-${Date.now()}`,
       title: title.trim(),
       author: author.trim(),
       category: category.trim() || 'General',
@@ -581,21 +643,51 @@ export default function AdminPanel({
       }))
     };
 
-    onAddBook(newBook);
+    if (editingBookId) {
+      if (onUpdateBooks) {
+        onUpdateBooks(books.map(b => b.id === editingBookId ? newBook : b));
+        // Also sync with server
+        fetch('/api/books', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newBook)
+        }).catch(err => console.error('Update sync error:', err));
+        
+        setIsUploadSuccess(true);
+        setNotification(`"${title}" విజయవంతంగా అప్‌డేట్ చేయబడింది!`);
+        setTimeout(() => {
+          setIsUploadSuccess(false);
+          setActiveTab('manage');
+        }, 2000);
+      }
+    } else {
+      onAddBook(newBook);
+      setIsUploadSuccess(true);
+      setNotification(
+        contentType === 'audio' 
+          ? 'వాయిస్ కథ లైబ్రరీకి విజయవంతంగా అప్‌లోడ్ చేయబడింది!' 
+          : contentType === 'video' 
+          ? 'వీడియో కథ లైబ్రరీకి విజయవంతంగా అప్‌లోడ్ చేయబడింది!'
+          : 'పుస్తకం నేరుగా లైబ్రరీకి విజయవంతంగా అప్‌లోడ్ చేయబడింది!'
+      );
+      setTimeout(() => setIsUploadSuccess(false), 2000);
+    }
+    
     handleResetForm();
-    setNotification(
-      contentType === 'audio' 
-        ? 'వాయిస్ కథ లైబ్రరీకి విజయవంతంగా అప్‌లోడ్ చేయబడింది!' 
-        : contentType === 'video' 
-        ? 'వీడియో కథ లైబ్రరీకి విజయవంతంగా అప్‌లోడ్ చేయబడింది!'
-        : 'పుస్తకం నేరుగా లైబ్రరీకి విజయవంతంగా అప్‌లోడ్ చేయబడింది!'
-    );
+    setEditingBookId(null);
+    
+    // Clear any pending auto-save timers
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+
     setTimeout(() => setNotification(null), 3500);
   };
 
   return (
     <div className="fixed inset-0 bg-orange-100/40 backdrop-blur-md flex items-start justify-center pt-3 sm:pt-6 p-2 sm:p-4 z-50 overflow-y-auto">
-      <div className="bg-orange-50 border border-orange-300/80 rounded-2xl w-full max-w-3xl max-h-[86vh] flex flex-col shadow-2xl overflow-hidden text-slate-900">
+      <div className="bg-orange-50 border border-orange-300/80 rounded-2xl w-full max-w-2xl max-h-[86vh] flex flex-col shadow-2xl overflow-hidden text-slate-900">
         
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 bg-orange-100/90 border-b border-orange-300/80 shrink-0">
@@ -715,7 +807,7 @@ export default function AdminPanel({
                 id="admin-tab-manage"
               >
                 <FolderPlus className="w-4 h-4 text-rose-600" />
-                <span>రెండు ఫోల్డర్ల నిర్వహణ & పుస్తకాలు (Manage Folders & Books - {books.length})</span>
+                <span>ఫోల్డర్ల నిర్వహణ & పుస్తకాలు (Manage Folders & Books - {books.length})</span>
               </button>
 
               {/* TAB 4: PRICING & QR CODE SETTINGS */}
@@ -1019,19 +1111,30 @@ export default function AdminPanel({
             {activeTab === 'upload' && (
               <form onSubmit={handleUploadSubmit} className="flex-1 overflow-y-auto p-5 space-y-4">
                 
-                {/* Content Type Selector */}
+                {/* Content Type Selector & Storage Bridge */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-800 mb-1.5">
                     కంటెంట్ రకం ఎంచుకోండి (Content Type) *
                   </label>
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    className="hidden" 
+                    onChange={handleAdminFileUpload}
+                    accept={contentType === 'text' ? '.pdf,.txt,.doc' : contentType === 'audio' ? 'audio/*' : 'video/*'}
+                    id="admin-storage-input"
+                  />
                   <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
-                      onClick={() => setContentType('text')}
+                      onClick={() => {
+                        setContentType('text');
+                        setTimeout(() => fileInputRef.current?.click(), 100);
+                      }}
                       className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition ${
                         contentType === 'text'
                           ? 'bg-blue-600/20 border-blue-500 text-blue-700'
-                          : 'bg-orange-50 border-orange-300 text-slate-700'
+                          : 'bg-orange-50 border-orange-300 text-slate-700 shadow-sm'
                       }`}
                     >
                       <BookOpen className="w-3.5 h-3.5" />
@@ -1040,11 +1143,14 @@ export default function AdminPanel({
 
                     <button
                       type="button"
-                      onClick={() => setContentType('audio')}
+                      onClick={() => {
+                        setContentType('audio');
+                        setTimeout(() => fileInputRef.current?.click(), 100);
+                      }}
                       className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition ${
                         contentType === 'audio'
                           ? 'bg-purple-600/20 border-purple-500 text-purple-700'
-                          : 'bg-orange-50 border-orange-300 text-slate-700'
+                          : 'bg-orange-50 border-orange-300 text-slate-700 shadow-sm'
                       }`}
                     >
                       <Mic className="w-3.5 h-3.5" />
@@ -1053,17 +1159,23 @@ export default function AdminPanel({
 
                     <button
                       type="button"
-                      onClick={() => setContentType('video')}
+                      onClick={() => {
+                        setContentType('video');
+                        setTimeout(() => fileInputRef.current?.click(), 100);
+                      }}
                       className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition ${
                         contentType === 'video'
-                          ? 'bg-rose-600/20 border-rose-500 text-rose-300'
-                          : 'bg-orange-50 border-orange-300 text-slate-700'
+                          ? 'bg-rose-600/20 border-rose-500 text-rose-700'
+                          : 'bg-orange-50 border-orange-300 text-slate-700 shadow-sm'
                       }`}
                     >
                       <Film className="w-3.5 h-3.5" />
                       <span>వీడియో కథ (Video)</span>
                     </button>
                   </div>
+                  <p className="mt-2 text-[10px] text-slate-500 italic">
+                    * పైన ఉన్న బాక్సుని టచ్ చేస్తే మీ మొబైల్ స్టోరేజ్ ఓపెన్ అవుతుంది.
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1246,25 +1358,29 @@ export default function AdminPanel({
                 </div>
 
                 {/* Form Action Buttons */}
-                <div className="flex items-center justify-end gap-3 pt-3 border-t border-orange-300">
+                <div className="flex items-center justify-between gap-3 pt-4 border-t border-orange-300 w-full">
                   <button
                     type="button"
                     onClick={() => {
                       handleResetForm();
                       onClose();
                     }}
-                    className="px-5 py-2.5 bg-orange-100 hover:bg-orange-200 text-slate-800 text-xs font-bold rounded-xl transition"
+                    className="w-1/5 py-3 bg-orange-100 hover:bg-orange-200 text-slate-800 text-[10px] font-black rounded-2xl transition border border-orange-200 shadow-sm whitespace-nowrap overflow-hidden"
                     id="admin-cancel-upload-btn"
                   >
-                    క్యాన్సల్ (Cancel)
+                    క్యాన్సల్
                   </button>
                   <button
                     type="submit"
-                    className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-slate-900 text-xs font-bold rounded-xl transition shadow-lg shadow-blue-600/30"
+                    className={`w-1/5 flex items-center justify-center gap-1 py-3 text-white text-[10px] font-black rounded-2xl transition shadow-lg ${
+                      isUploadSuccess 
+                        ? 'bg-emerald-500 shadow-emerald-500/30' 
+                        : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/30'
+                    } whitespace-nowrap overflow-hidden`}
                     id="admin-submit-upload-btn"
                   >
-                    <Upload className="w-4 h-4" />
-                    <span>లైబ్రరీకి అప్‌లోడ్ చేయండి (Upload Direct to Library)</span>
+                    {isUploadSuccess ? <CheckCircle2 className="w-3 h-3" /> : <Upload className="w-3 h-3" />}
+                    <span>{isUploadSuccess ? 'Saved!' : (editingBookId ? 'Update' : 'Upload')}</span>
                   </button>
                 </div>
               </form>
@@ -1272,72 +1388,98 @@ export default function AdminPanel({
 
             {/* TAB 3 CONTENT: DELETE / MANAGE BOOKS */}
             {activeTab === 'manage' && (
-              <div className="flex-1 overflow-y-auto p-5 space-y-5">
-                <p className="text-xs text-slate-900 leading-relaxed font-extrabold bg-amber-200 p-3 rounded-xl border-2 border-amber-400 shadow-sm">
-                  అడ్మిన్ గారు! అడ్మిన్ ప్యానెల్‌లోని రెండు ఫోల్డర్లను (రెండు రకాల గ్రంథాలయాలను) నిర్వహించడానికి క్రింది ఇంటరాక్టివ్ ఫోల్డర్లపై క్లిక్ చేయండి.
-                </p>
+              <div className="flex-1 overflow-y-auto p-5 space-y-6">
+                {/* FILE MANAGER HEADER */}
+                <div className="flex items-center justify-between border-b border-orange-100 pb-4">
+                  <div className="flex items-center gap-2 text-slate-800">
+                    <FolderIcon className="w-5 h-5 text-slate-700" />
+                    <span className="text-sm font-black tracking-widest uppercase">Folders</span>
+                  </div>
+                  <button className="bg-orange-100/80 hover:bg-orange-200 text-orange-900 px-3 py-1.5 rounded-xl flex items-center gap-2 text-[10px] font-black border border-orange-200 shadow-sm transition-all cursor-pointer">
+                    <FolderPlus className="w-3.5 h-3.5" />
+                    <span>New Folder</span>
+                  </button>
+                </div>
 
-                {/* TWO EXPLICIT INTERACTIVE FOLDER CARDS */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-2">
-                  {/* Folder 1: సాధారణ గ్రంథాలయం ఫోల్డర్ */}
+                {/* ALL LIBRARY BOOKS HIGHLIGHT BAR */}
+                <div className="bg-gradient-to-r from-orange-600 to-orange-500 rounded-2xl p-4 flex items-center justify-between shadow-lg shadow-orange-200 border border-orange-400 cursor-pointer hover:brightness-105 transition-all">
+                  <div className="flex items-center gap-3">
+                    <BookOpen className="w-5 h-5 text-white" />
+                    <span className="text-white font-black text-sm">All Library Books</span>
+                  </div>
+                  <span className="bg-orange-400/50 text-white font-black text-xs px-3 py-0.5 rounded-lg border border-white/20">
+                    {books.length}
+                  </span>
+                </div>
+
+                {/* INTERACTIVE FOLDER LIST (MOBILE FILE MANAGER STYLE) */}
+                <div className="flex flex-col gap-1 px-1">
+                  {/* Folder 1: సాధారణ గ్రంథాలయం */}
                   <button
                     onClick={() => {
-                      setActiveManageFolder('general');
+                      setActiveManageFolder(prev => prev === 'general' ? null : 'general');
                       setEditingBookId(null);
                     }}
-                    className={`p-5 rounded-2xl border-2 flex flex-col items-center justify-center gap-2.5 transition-all text-center relative shadow-md cursor-pointer ${
-                      activeManageFolder === 'general'
-                        ? 'bg-orange-100 border-orange-500 scale-[1.02] ring-2 ring-orange-500/20'
-                        : 'bg-white hover:bg-orange-50/50 border-slate-200'
+                    className={`group py-3.5 flex items-center gap-4 transition-all text-left relative cursor-pointer border-b border-slate-50 last:border-0 ${
+                      activeManageFolder === 'general' ? 'bg-orange-50/50 rounded-xl px-2 -mx-2' : ''
                     }`}
                   >
-                    <div className="text-5xl">📁</div>
-                    <div className="space-y-0.5">
-                      <span className="block text-sm font-black text-black">సాధారణ గ్రంథాలయం ఫోల్డర్</span>
-                      <span className="block text-[10px] text-slate-800 font-bold uppercase">General Books Folder</span>
+                    <FolderIcon className={`w-5 h-5 shrink-0 transition-colors ${activeManageFolder === 'general' ? 'text-orange-500 fill-orange-500/20' : 'text-slate-400 group-hover:text-slate-600'}`} />
+                    <div className="flex-1 min-w-0">
+                      <span className="block text-sm font-bold text-slate-800 truncate">
+                        సాధారణ గ్రంథాలయం (General) <span className="text-slate-400 font-medium ml-1">({books.filter(b => b.folderId !== 'fol-talapatra' && b.folderId !== 'fol-trash').length})</span>
+                      </span>
                     </div>
-                    <span className="absolute top-3 right-3 bg-orange-200 text-black border border-orange-400 font-extrabold text-[11px] px-2.5 py-0.5 rounded-full shadow-xs">
-                      {books.filter(b => b.folderId !== 'fol-talapatra').length} గ్రంథాలు
-                    </span>
+                    <div className="w-1.5 h-1.5 rounded-full bg-slate-200"></div>
                   </button>
 
-                  {/* Folder 2: తాళపత్ర గ్రంథాలయం ఫోల్డర్ */}
+                  {/* Folder 2: తాళపత్ర గ్రంథాలయం */}
                   <button
                     onClick={() => {
-                      setActiveManageFolder('palm');
+                      setActiveManageFolder(prev => prev === 'palm' ? null : 'palm');
                       setEditingBookId(null);
                     }}
-                    className={`p-5 rounded-2xl border-2 flex flex-col items-center justify-center gap-2.5 transition-all text-center relative shadow-md cursor-pointer ${
-                      activeManageFolder === 'palm'
-                        ? 'bg-amber-100 border-amber-500 scale-[1.02] ring-2 ring-amber-500/20'
-                        : 'bg-white hover:bg-amber-50/50 border-slate-200'
+                    className={`group py-3.5 flex items-center gap-4 transition-all text-left relative cursor-pointer border-b border-slate-50 last:border-0 ${
+                      activeManageFolder === 'palm' ? 'bg-amber-50/50 rounded-xl px-2 -mx-2' : ''
                     }`}
                   >
-                    <div className="text-5xl">📜</div>
-                    <div className="space-y-0.5">
-                      <span className="block text-sm font-black text-black">తాళపత్ర గ్రంథాలయం ఫోల్డర్</span>
-                      <span className="block text-[10px] text-amber-950 font-bold uppercase">Palm Leaf Manuscripts Folder</span>
+                    <FolderIcon className={`w-5 h-5 shrink-0 transition-colors ${activeManageFolder === 'palm' ? 'text-amber-500 fill-amber-500/20' : 'text-slate-400 group-hover:text-slate-600'}`} />
+                    <div className="flex-1 min-w-0">
+                      <span className="block text-sm font-bold text-slate-800 truncate">
+                        తాళపత్ర గ్రంథాలు (Palm Leaf) <span className="text-slate-400 font-medium ml-1">({books.filter(b => b.folderId === 'fol-talapatra').length})</span>
+                      </span>
                     </div>
-                    <span className="absolute top-3 right-3 bg-amber-200 text-black border border-amber-400 font-extrabold text-[11px] px-2.5 py-0.5 rounded-full shadow-xs">
-                      {books.filter(b => b.folderId === 'fol-talapatra').length} గ్రంథాలు
-                    </span>
+                    <div className="w-1.5 h-1.5 rounded-full bg-slate-200"></div>
+                  </button>
+
+                  {/* Folder 3: టెంపరరీ ఫోల్డర్ */}
+                  <button
+                    onClick={() => {
+                      setActiveManageFolder(prev => prev === 'trash' ? null : 'trash');
+                      setEditingBookId(null);
+                    }}
+                    className={`group py-3.5 flex items-center gap-4 transition-all text-left relative cursor-pointer border-b border-slate-50 last:border-0 ${
+                      activeManageFolder === 'trash' ? 'bg-rose-50/50 rounded-xl px-2 -mx-2' : ''
+                    }`}
+                  >
+                    <FolderIcon className={`w-5 h-5 shrink-0 transition-colors ${activeManageFolder === 'trash' ? 'text-rose-500 fill-rose-500/20' : 'text-slate-400 group-hover:text-slate-600'}`} />
+                    <div className="flex-1 min-w-0">
+                      <span className="block text-sm font-bold text-slate-800 truncate">
+                        టెంపరరీ ఫోల్డర్ (Trash) <span className="text-slate-400 font-medium ml-1">({books.filter(b => b.folderId === 'fol-trash').length})</span>
+                      </span>
+                    </div>
+                    <div className="w-1.5 h-1.5 rounded-full bg-slate-200"></div>
                   </button>
                 </div>
 
                 {/* SELECTED FOLDER MANAGEMENT BOARD */}
-                {activeManageFolder === 'general' ? (
-                  <div className="bg-orange-50/50 border-2 border-orange-300 rounded-2xl p-4 sm:p-5 space-y-4 shadow-sm">
-                    <h4 className="text-sm font-black text-black border-b border-orange-300 pb-2.5 flex items-center gap-2">
-                      <span className="text-xl">📁</span>
-                      <span>సాధారణ గ్రంథాలయం (General Books Management)</span>
-                    </h4>
-                    
-                    <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
-                      {books.filter(b => b.folderId !== 'fol-talapatra').map(book => (
-                        <div 
-                          key={book.id}
-                          className="bg-white border-2 border-orange-200 hover:border-orange-300 rounded-xl p-3 shadow-xs transition"
-                        >
+                {activeManageFolder === 'general' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-6 max-h-[600px] overflow-y-auto pr-1">
+                    {books.filter(b => b.folderId !== 'fol-talapatra' && b.folderId !== 'fol-trash').map(book => (
+                      <div 
+                        key={book.id}
+                        className="py-2 transition-all border-b border-orange-100 last:border-0"
+                      >
                           {editingBookId === book.id ? (
                             <div className="space-y-2.5 text-xs">
                               <div>
@@ -1425,20 +1567,34 @@ export default function AdminPanel({
                                 <button
                                   onClick={() => {
                                     setEditingBookId(book.id);
-                                    setEditBookTitle(book.title);
-                                    setEditBookAuthor(book.author);
-                                    setEditBookCost(book.costToUnlock);
+                                    setTitle(book.title);
+                                    setAuthor(book.author);
+                                    setCategory(book.category);
+                                    setDescription(book.description || '');
+                                    setFolderId(book.folderId || '');
+                                    setCostToUnlock(book.costToUnlock);
+                                    setCostPerMinute(book.costPerMinute);
+                                    setCoverImage(book.coverImage || book.coverUrl || '');
+                                    setAudioUrl(book.audioUrl || '');
+                                    setVideoUrl(book.videoUrl || '');
+                                    setContentType(book.contentType || 'text');
+                                    if (book.chapters && book.chapters.length > 0) {
+                                      setChapters(book.chapters.map(c => ({ title: c.title, content: c.content })));
+                                    }
+                                    setActiveTab('upload'); // Go to the upload board
                                   }}
                                   className="bg-orange-100 hover:bg-orange-200 text-black border border-orange-300 rounded-lg px-2.5 py-1 text-[10px] font-black transition cursor-pointer"
                                 >
                                   ఎడిట్ (Edit)
                                 </button>
-                                <button
+                                 <button
                                   onClick={() => {
-                                    if (confirm(`నిజంగా "${book.title}" పుస్తకాన్ని లైబ్రరీ నుండి తొలగించాలనుకుంటున్నారా?`)) {
-                                      onDeleteBook(book.id);
-                                      setNotification(`"${book.title}" డిలీట్ చేయబడింది!`);
-                                      setTimeout(() => setNotification(null), 3000);
+                                    if (confirm(`"${book.title}" ను టెంపరరీ ఫోల్డర్ కు తరలించాలనుకుంటున్నారా?`)) {
+                                      if (onUpdateBooks) {
+                                        onUpdateBooks(books.map(b => b.id === book.id ? { ...b, folderId: 'fol-trash' } : b));
+                                        setNotification(`"${book.title}" టెంపరరీ ఫోల్డర్ కు తరలించబడింది!`);
+                                        setTimeout(() => setNotification(null), 3000);
+                                      }
                                     }
                                   }}
                                   className="bg-rose-50 hover:bg-rose-500 text-rose-600 hover:text-white border border-rose-200 hover:border-rose-500 rounded-lg px-2.5 py-1 text-[10px] font-black transition cursor-pointer"
@@ -1464,160 +1620,165 @@ export default function AdminPanel({
                         </div>
                       ))}
 
+                      {books.filter(b => b.folderId !== 'fol-talapatra' && b.folderId !== 'fol-trash').length === 0 && (
+                        <div className="text-center py-8 text-slate-600 text-xs font-semibold">
+                          సాధారణ లైబ్రరీలో పుస్తకాలు లేవు.
+                        </div>
+                      )}
+                    </div>
+                )}
+
+                {/* SELECTED FOLDER: PALM LEAF */}
+                {activeManageFolder === 'palm' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-6 max-h-[600px] overflow-y-auto pr-1">
+                    {books.filter(b => b.folderId === 'fol-talapatra').map(book => (
+                      <div 
+                        key={book.id}
+                        className="py-2 transition-all border-b border-amber-100 last:border-0"
+                      >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3 overflow-hidden">
+                              <div className="w-10 h-12 bg-slate-100 rounded overflow-hidden shrink-0 border border-slate-200">
+                                <img 
+                                  src={book.coverImage || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=200&q=80'} 
+                                  alt={book.title}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                              <div className="overflow-hidden">
+                                <h5 className="text-xs font-extrabold text-black truncate">{book.title}</h5>
+                                <p className="text-[11px] text-slate-700 truncate">రచయిత: {book.author}</p>
+                                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                  <span className="text-[9px] bg-amber-100 border border-amber-200 text-amber-800 px-1.5 py-0.5 rounded-full font-bold">
+                                    తాళపత్ర గ్రంథం
+                                  </span>
+                                  <span className="text-[9px] bg-emerald-100 border border-emerald-200 text-emerald-800 px-1.5 py-0.5 rounded-full font-mono font-bold">
+                                    {book.costToUnlock} Credits
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex flex-col gap-1.5 shrink-0">
+                              <button
+                                onClick={() => {
+                                  setEditingBookId(book.id);
+                                  setTitle(book.title);
+                                  setAuthor(book.author);
+                                  setCategory(book.category);
+                                  setDescription(book.description || '');
+                                  setFolderId(book.folderId || 'fol-talapatra');
+                                  setCostToUnlock(book.costToUnlock);
+                                  setCostPerMinute(book.costPerMinute);
+                                  setCoverImage(book.coverImage || book.coverUrl || '');
+                                  setAudioUrl(book.audioUrl || '');
+                                  setVideoUrl(book.videoUrl || '');
+                                  setContentType(book.contentType || 'text');
+                                  if (book.chapters && book.chapters.length > 0) {
+                                    setChapters(book.chapters.map(c => ({ title: c.title, content: c.content })));
+                                  }
+                                  setActiveTab('upload'); // Go to the upload board
+                                }}
+                                className="bg-amber-100 hover:bg-amber-200 text-black border border-amber-300 rounded-lg px-2.5 py-1 text-[10px] font-black transition cursor-pointer"
+                              >
+                                ఎడిట్ (Edit)
+                              </button>
+                                 <button
+                                  onClick={() => {
+                                    if (confirm(`"${book.title}" ను టెంపరరీ ఫోల్డర్ కు తరలించాలనుకుంటున్నారా?`)) {
+                                      if (onUpdateBooks) {
+                                        onUpdateBooks(books.map(b => b.id === book.id ? { ...b, folderId: 'fol-trash' } : b));
+                                        setNotification(`"${book.title}" టెంపరరీ ఫోల్డర్ కు తరలించబడింది!`);
+                                        setTimeout(() => setNotification(null), 3000);
+                                      }
+                                    }
+                                  }}
+                                  className="bg-rose-50 hover:bg-rose-500 text-rose-600 hover:text-white border border-rose-200 hover:border-rose-500 rounded-lg px-2.5 py-1 text-[10px] font-black transition cursor-pointer"
+                                  id={`delete-book-btn-palm-${book.id}`}
+                                >
+                                  డిలీట్ (Delete)
+                                </button>
+                              <button
+                                onClick={() => {
+                                  if (onUpdateBooks) {
+                                    onUpdateBooks(books.map(b => b.id === book.id ? { ...b, folderId: '' } : b));
+                                    setNotification(`"${book.title}" సాధారణ గ్రంథాలయానికి మార్చబడింది!`);
+                                    setTimeout(() => setNotification(null), 3000);
+                                  }
+                                }}
+                                className="bg-blue-100 hover:bg-blue-200 text-blue-900 border border-blue-300 rounded-lg px-2.5 py-1 text-[10px] font-black transition cursor-pointer"
+                              >
+                                📁 సాధారణ లైబ్రరీకి మార్చు
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
                       {books.filter(b => b.folderId !== 'fol-talapatra').length === 0 && (
                         <div className="text-center py-8 text-slate-600 text-xs font-semibold">
                           సాధారణ లైబ్రరీలో పుస్తకాలు లేవు.
                         </div>
                       )}
                     </div>
-                  </div>
-                ) : (
-                  <div className="bg-amber-50/50 border-2 border-amber-300 rounded-2xl p-4 sm:p-5 space-y-4 shadow-sm">
-                    <h4 className="text-sm font-black text-black border-b border-amber-300 pb-2.5 flex items-center gap-2">
-                      <span className="text-xl">📜</span>
-                      <span>తాళపత్ర గ్రంథాలు (Palm Leaf Manuscripts Management)</span>
-                    </h4>
-                    
-                    <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
-                      {books.filter(b => b.folderId === 'fol-talapatra').map(book => (
-                        <div 
-                          key={book.id}
-                          className="bg-white border-2 border-amber-200 hover:border-amber-300 rounded-xl p-3 shadow-xs transition"
-                        >
-                          {editingBookId === book.id ? (
-                            <div className="space-y-2.5 text-xs">
-                              <div>
-                                <label className="block text-[10px] font-black text-slate-900 mb-1">గ్రంథం పేరు (Manuscript Title)</label>
-                                <input 
-                                  type="text" 
-                                  value={editBookTitle}
-                                  onChange={(e) => setEditBookTitle(e.target.value)}
-                                  className="w-full bg-amber-50 border border-amber-300 rounded-lg p-2 text-xs font-semibold text-black focus:outline-none focus:ring-1 focus:ring-amber-500"
+                )}
+
+                {/* SELECTED FOLDER: TEMPORARY (TRASH) */}
+                {activeManageFolder === 'trash' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-6 max-h-[600px] overflow-y-auto pr-1">
+                    {books.filter(b => b.folderId === 'fol-trash').map(book => (
+                      <div 
+                        key={book.id} 
+                        className="py-2 transition-all border-b border-rose-100 last:border-0"
+                      >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3 overflow-hidden">
+                              <div className="w-10 h-12 bg-slate-100 rounded overflow-hidden shrink-0 border border-slate-200">
+                                <img 
+                                  src={book.coverImage || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=200&q=80'} 
+                                  alt="" 
+                                  className="w-full h-full object-cover" 
                                 />
                               </div>
-                              <div>
-                                <label className="block text-[10px] font-black text-slate-900 mb-1">రచయిత / అనువాదకుడు (Author/Translator)</label>
-                                <input 
-                                  type="text" 
-                                  value={editBookAuthor}
-                                  onChange={(e) => setEditBookAuthor(e.target.value)}
-                                  className="w-full bg-amber-50 border border-amber-300 rounded-lg p-2 text-xs font-semibold text-black focus:outline-none focus:ring-1 focus:ring-amber-500"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-[10px] font-black text-slate-900 mb-1">అన్‌లాక్ ధర (Cost in Credits)</label>
-                                <input 
-                                  type="number" 
-                                  value={editBookCost}
-                                  onChange={(e) => setEditBookCost(Math.max(0, Number(e.target.value)))}
-                                  className="w-full bg-amber-50 border border-amber-300 rounded-lg p-2 text-xs font-bold text-black focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
-                                />
-                              </div>
-                              <div className="flex items-center gap-2 pt-1.5 border-t border-slate-100">
-                                <button
-                                  onClick={() => {
-                                    if (!editBookTitle.trim()) {
-                                      alert('శీర్షిక ఖాళీగా ఉండకూడదు!');
-                                      return;
-                                    }
-                                    if (onUpdateBooks) {
-                                      onUpdateBooks(books.map(b => b.id === book.id ? { 
-                                        ...b, 
-                                        title: editBookTitle, 
-                                        author: editBookAuthor, 
-                                        costToUnlock: editBookCost 
-                                      } : b));
-                                      setNotification(`"${editBookTitle}" విజయవంతంగా సవరించబడింది!`);
-                                      setTimeout(() => setNotification(null), 3000);
-                                    }
-                                    setEditingBookId(null);
-                                  }}
-                                  className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold px-3 py-1.5 rounded-lg text-xs transition"
-                                >
-                                  సేవ్ (Save)
-                                </button>
-                                <button
-                                  onClick={() => setEditingBookId(null)}
-                                  className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-extrabold px-3 py-1.5 rounded-lg text-xs transition"
-                                >
-                                  రద్దు (Cancel)
-                                </button>
+                              <div className="overflow-hidden">
+                                <h5 className="text-xs font-extrabold text-black truncate">{book.title}</h5>
+                                <span className="text-[9px] bg-rose-100 text-rose-800 px-1.5 py-0.5 rounded-full font-bold">Trash Item</span>
                               </div>
                             </div>
-                          ) : (
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex items-center gap-3 overflow-hidden">
-                                <div className="w-10 h-12 bg-slate-100 rounded overflow-hidden shrink-0 border border-slate-200">
-                                  <img 
-                                    src={book.coverImage || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=200&q=80'} 
-                                    alt={book.title}
-                                    className="w-full h-full object-cover"
-                                  />
-                                </div>
-                                <div className="overflow-hidden">
-                                  <h5 className="text-xs font-extrabold text-black truncate">{book.title}</h5>
-                                  <p className="text-[11px] text-slate-700 truncate">రచయిత: {book.author}</p>
-                                  <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                    <span className="text-[9px] bg-amber-100 border border-amber-200 text-amber-800 px-1.5 py-0.5 rounded-full font-bold">
-                                      {book.category}
-                                    </span>
-                                    <span className="text-[9px] bg-emerald-100 border border-emerald-200 text-emerald-800 px-1.5 py-0.5 rounded-full font-mono font-bold">
-                                      {book.costToUnlock} Credits
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex flex-col gap-1.5 shrink-0">
-                                <button
-                                  onClick={() => {
-                                    setEditingBookId(book.id);
-                                    setEditBookTitle(book.title);
-                                    setEditBookAuthor(book.author);
-                                    setEditBookCost(book.costToUnlock);
-                                  }}
-                                  className="bg-amber-100 hover:bg-amber-200 text-black border border-amber-300 rounded-lg px-2.5 py-1 text-[10px] font-black transition cursor-pointer"
-                                >
-                                  ఎడిట్ (Edit)
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    if (confirm(`నిజంగా "${book.title}" గ్రంథాన్ని లైబ్రరీ నుండి తొలగించాలనుకుంటున్నారా?`)) {
-                                      onDeleteBook(book.id);
-                                      setNotification(`"${book.title}" డిలీట్ చేయబడింది!`);
-                                      setTimeout(() => setNotification(null), 3000);
-                                    }
-                                  }}
-                                  className="bg-rose-50 hover:bg-rose-500 text-rose-600 hover:text-white border border-rose-200 hover:border-rose-500 rounded-lg px-2.5 py-1 text-[10px] font-black transition cursor-pointer"
-                                  id={`delete-book-btn-${book.id}`}
-                                >
-                                  డిలీట్ (Delete)
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    if (onUpdateBooks) {
-                                      // Remove folderId to move it to general library
-                                      onUpdateBooks(books.map(b => b.id === book.id ? { ...b, folderId: undefined } : b));
-                                      setNotification(`"${book.title}" సాధారణ గ్రంథాలయానికి మార్చబడింది!`);
-                                      setTimeout(() => setNotification(null), 3000);
-                                    }
-                                  }}
-                                  className="bg-blue-100 hover:bg-blue-200 text-blue-900 border border-blue-300 rounded-lg px-2.5 py-1 text-[10px] font-black transition cursor-pointer"
-                                >
-                                  📁 సాధారణ లైబ్రరీకి మార్చు
-                                </button>
-                              </div>
+                            <div className="flex flex-col gap-1.5 shrink-0 items-end">
+                              <button
+                                onClick={() => {
+                                  if (onUpdateBooks) {
+                                    onUpdateBooks(books.map(b => b.id === book.id ? { ...b, folderId: 'fol-general' } : b));
+                                    setNotification(`"${book.title}" మళ్ళీ సాధారణ లైబ్రరీకి చేర్చబడింది!`);
+                                    setTimeout(() => setNotification(null), 3000);
+                                  }
+                                }}
+                                className="w-full bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg px-2 py-1 text-[10px] font-black transition shadow-sm whitespace-nowrap"
+                              >
+                                రీలోడ్ (Reload)
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm(`నిజంగా "${book.title}" ను శాశ్వతంగా తొలగించాలనుకుంటున్నారా?`)) {
+                                    onDeleteBook(book.id);
+                                    setNotification(`"${book.title}" శాశ్వతంగా తొలగించబడింది!`);
+                                    setTimeout(() => setNotification(null), 3000);
+                                  }
+                                }}
+                                className="w-full bg-rose-600 hover:bg-rose-700 text-white rounded-lg px-2 py-1 text-[10px] font-black transition shadow-sm whitespace-nowrap"
+                              >
+                                పర్మినెంట్ డిలీట్
+                              </button>
                             </div>
-                          )}
+                          </div>
                         </div>
                       ))}
-
-                      {books.filter(b => b.folderId === 'fol-talapatra').length === 0 && (
-                        <div className="text-center py-8 text-slate-600 text-xs font-semibold">
-                          తాళపత్ర గ్రంథాలయంలో పుస్తకాలు లేవు.
+                      {books.filter(b => b.folderId === 'fol-trash').length === 0 && (
+                        <div className="col-span-full text-center py-8 text-rose-400 text-xs font-semibold">
+                          టెంపరరీ ఫోల్డర్ ఖాళీగా ఉంది.
                         </div>
                       )}
                     </div>
-                  </div>
                 )}
               </div>
             )}

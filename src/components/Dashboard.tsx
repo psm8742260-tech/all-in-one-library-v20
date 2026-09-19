@@ -16,6 +16,7 @@ import AdminPanel from './AdminPanel';
 import LibraryModal, { CATEGORIES, ALL_INDIA_LANGUAGES } from './LibraryModal';
 import WriterRegistrationModal from './WriterRegistrationModal';
 import PaymentModal from './PaymentModal';
+import LibraryGateway from './LibraryGateway';
 // @ts-ignore
 import appLogoImg from '../assets/images/app_logo_icon_1787974156637.jpg';
 
@@ -69,7 +70,7 @@ export default function Dashboard({
   onDeleteTree
 }: DashboardProps) {
   const isAdmin = user.email.toLowerCase() === 'psm8742260@gmail.com' || user.email.toLowerCase() === 'sim_8466062260@sim-auth.library' || user.email === '8466062260' || user.email === '+918466062260';
-  const [activeTab, setActiveTab] = useState<'chat' | 'shelf'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'shelf' | 'gateway'>('chat');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
@@ -97,6 +98,18 @@ export default function Dashboard({
     return book.chapters ? book.chapters.reduce((sum, chap) => sum + (chap.content ? chap.content.split(/\s+/).filter(Boolean).length : 0), 0) : 0;
   };
 
+  const isPdfBook = (book: Book | null) => {
+    if (!book) return false;
+    const pdfPattern = /(https?:\/\/|\/uploads\/)[^\s"']+\.pdf/i;
+    return (
+      (typeof book.content === 'string' && book.content.match(pdfPattern)) ||
+      (typeof book.text === 'string' && book.text.match(pdfPattern)) ||
+      (typeof book.body === 'string' && book.body.match(pdfPattern)) ||
+      (typeof book.description === 'string' && book.description.match(pdfPattern)) ||
+      (book.chapters && book.chapters.some((ch: any) => typeof ch.content === 'string' && ch.content.match(pdfPattern)))
+    );
+  };
+
   // Payment Modal state for UPI QR Scanner
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentModalBook, setPaymentModalBook] = useState<Book | null>(null);
@@ -106,6 +119,10 @@ export default function Dashboard({
   const [chatImageAttachment, setChatImageAttachment] = useState<string | null>(null);
   const [chatVideoAttachment, setChatVideoAttachment] = useState<string | null>(null);
   const [chatAudioAttachment, setChatAudioAttachment] = useState<string | null>(null);
+  const [showInternalBrowser, setShowInternalBrowser] = useState(false);
+  const [browserUrl, setBrowserUrl] = useState('');
+  const [showBrowserPayment, setShowBrowserPayment] = useState(false);
+  const [isProcessingBrowserDownload, setIsProcessingBrowserDownload] = useState(false);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const videoInputRef = useRef<HTMLInputElement | null>(null);
   const audioInputRef = useRef<HTMLInputElement | null>(null);
@@ -519,6 +536,43 @@ Downloaded from All In One Library Hub
   const handleSendMessage = async (textToSend: string) => {
     if ((!textToSend.trim() && !chatImageAttachment && !chatVideoAttachment && !chatAudioAttachment) || chatLoading) return;
 
+    // --- ADMIN CUSTOM LOGIC: Book Search & Redirect ---
+    const lowerText = textToSend.toLowerCase().trim();
+    
+    // 1. Handling "International Library" + "ok" flow
+    if (lowerText === 'ok' && messages.length > 0) {
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg.sender === 'user' && lastMsg.text.toLowerCase().includes('international library')) {
+        setBrowserUrl('https://archive.org');
+        setShowInternalBrowser(true);
+        setInputText('');
+        return;
+      }
+    }
+
+    // 2. Handling book search and auto-redirect for book queries
+    // We treat messages as potential book queries if they are not very short
+    if (textToSend.trim().length >= 3) {
+      setChatLoading(true);
+      // Simulate browsing/searching for 2 seconds (Browsing Effect)
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const bookFound = books.some(b => 
+        b.title.toLowerCase().includes(lowerText) || 
+        lowerText.includes(b.title.toLowerCase())
+      );
+
+      if (!bookFound) {
+        setBrowserUrl(`https://archive.org/search.php?query=${encodeURIComponent(textToSend)}`);
+        setShowInternalBrowser(true);
+        setChatLoading(false);
+        setInputText('');
+        // We don't say "not found", we just redirect and clear input
+        return;
+      }
+    }
+    // --- END ADMIN CUSTOM LOGIC ---
+
     const currentImg = chatImageAttachment;
     const currentVid = chatVideoAttachment;
     const currentAud = chatAudioAttachment;
@@ -864,6 +918,21 @@ Downloaded from All In One Library Hub
             <span className="whitespace-nowrap">Shelf</span>
           </button>
 
+          {/* 3.5 Gateway Button */}
+          <button
+            onClick={() => setActiveTab('gateway')}
+            className={`h-8 sm:h-9 px-3 sm:px-3.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 shrink-0 border ${
+              activeTab === 'gateway'
+                ? 'bg-orange-500 text-slate-900 shadow-md border-orange-400'
+                : 'bg-orange-100 hover:bg-orange-200 text-slate-900/90 border-orange-300'
+            }`}
+            id="tab-toggle-gateway"
+            title="Smart Library Gateway"
+          >
+            <Globe className="w-3.5 h-3.5 text-slate-900" />
+            <span className="whitespace-nowrap">Gateway</span>
+          </button>
+
           {/* 4. Writer Button with Speaker */}
           <button 
             onClick={() => setShowWriterModal(true)}
@@ -1015,6 +1084,23 @@ Downloaded from All In One Library Hub
         {/* Center Display: Chat Console or Book Shelf */}
         <div className="flex-1 flex flex-col h-full bg-orange-50 relative min-w-0">
           
+          {/* TAB 3: SMART LIBRARY GATEWAY */}
+          {activeTab === 'gateway' && (
+            <div className="flex-1 flex flex-col h-full min-h-0">
+              <LibraryGateway 
+                onClose={() => setActiveTab('chat')}
+                localBooks={books}
+                onBookSaved={(bookData) => {
+                  onAddBook({
+                    ...bookData,
+                    id: `ext-${Date.now()}`,
+                    folderId: 'fol-general'
+                  });
+                }}
+              />
+            </div>
+          )}
+
           {/* TAB 1: AI LIBRARIAN CHAT CONSOLE */}
           {activeTab === 'chat' && (
             <div className="flex-1 flex flex-col h-full min-h-0">
@@ -1723,7 +1809,13 @@ Downloaded from All In One Library Hub
                               {/* Internet Archive style bottom count bar */}
                               <div className="bg-slate-800/80 border-t border-slate-700/50 px-3 py-1.5 flex items-center gap-1.5 text-slate-300 text-[9px] font-bold tracking-wider shrink-0 pl-5">
                                 <span className="text-[10px]">📋</span>
-                                <span className="truncate">{charDisplay} అక్షరాలు • {book.chapters.length} Ch</span>
+                                <span className="truncate">
+                                  {isPdfBook(book) ? (
+                                    `PDF డాక్యుమెంట్ ${book.pageCount ? `• ${book.pageCount} పేజీలు` : ''}`
+                                  ) : (
+                                    `${charDisplay} అక్షరాలు • ${book.chapters ? book.chapters.length : 1} Ch`
+                                  )}
+                                </span>
                               </div>
                             </div>
                           );
@@ -1781,7 +1873,13 @@ Downloaded from All In One Library Hub
                               {/* Internet Archive style bottom count bar */}
                               <div className="bg-amber-950/90 border-t border-amber-800/30 px-3 py-1.5 flex flex-wrap items-center gap-1.5 text-amber-200 text-[9px] font-bold tracking-wider shrink-0 pl-5">
                                 <span className="text-[10px]">📋</span>
-                                <span className="truncate">{charDisplay} అక్షరాలు • {book.chapters.length} Ch</span>
+                                <span className="truncate">
+                                  {isPdfBook(book) ? (
+                                    `PDF డాక్యుమెంట్`
+                                  ) : (
+                                    `${charDisplay} అక్షరాలు • ${book.chapters ? book.chapters.length : 1} Ch`
+                                  )}
+                                </span>
                                 {(book.pageCount || book.fileSizeMb) && (
                                   <div className="flex items-center gap-2 border-l border-amber-800/50 pl-2 ml-1">
                                     {book.pageCount && <span>{book.pageCount} Pages</span>}
@@ -1880,12 +1978,20 @@ Downloaded from All In One Library Hub
                 
                 {/* Visual Stats Bar inside details */}
                 <div className="mt-3 flex flex-wrap gap-1.5">
-                  <span className="text-[9px] font-black bg-orange-200/60 text-orange-950 border border-orange-300 px-2 py-0.5 rounded-md">
-                    📝 {getBookCharsCount(selectedBook).toLocaleString()} అక్షరాలు
-                  </span>
-                  <span className="text-[9px] font-black bg-amber-200/60 text-amber-950 border border-amber-300 px-2 py-0.5 rounded-md">
-                    📖 {selectedBook.chapters.length} అధ్యాయాలు
-                  </span>
+                  {isPdfBook(selectedBook) ? (
+                    <span className="text-[9px] font-black bg-emerald-200/60 text-emerald-950 border border-emerald-300 px-2 py-0.5 rounded-md">
+                      📄 PDF డాక్యుమెంట్ {selectedBook.pageCount ? `• ${selectedBook.pageCount} పేజీలు` : ''}
+                    </span>
+                  ) : (
+                    <>
+                      <span className="text-[9px] font-black bg-orange-200/60 text-orange-950 border border-orange-300 px-2 py-0.5 rounded-md">
+                        📝 {getBookCharsCount(selectedBook).toLocaleString()} అక్షరాలు
+                      </span>
+                      <span className="text-[9px] font-black bg-amber-200/60 text-amber-950 border border-amber-300 px-2 py-0.5 rounded-md">
+                        📖 {selectedBook.chapters ? selectedBook.chapters.length : 1} అధ్యాయాలు
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -2409,6 +2515,49 @@ Downloaded from All In One Library Hub
         activeFolderId={activeFolderId}
         onSelectFolder={setActiveFolderId}
       />
+      {/* Internal Universal Browser Overlay */}
+      <AnimatePresence>
+        {showInternalBrowser && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed inset-0 z-[100] bg-white flex flex-col"
+          >
+            {/* Custom Header - No Address Bar */}
+            <div className="bg-slate-900 text-white p-4 flex items-center justify-between shadow-lg">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg overflow-hidden border border-white/20">
+                  <img src={appLogoImg} alt="Logo" className="w-full h-full object-cover" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm leading-none">International Library Explorer</h3>
+                  <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest font-black">Powered by Brahmastra Ultra</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => setShowInternalBrowser(false)}
+                  className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            {/* Browser Content (Iframe) */}
+            <div className="flex-1 bg-slate-100 relative">
+              <iframe 
+                src={browserUrl} 
+                className="w-full h-full border-none shadow-inner"
+                title="International Library"
+                sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

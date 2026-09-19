@@ -57,6 +57,7 @@ export const BrahmastraUltraAgent: React.FC<Props> = ({ onSelectAgentForPrompt, 
 
     try {
       let response = '';
+      let modelUsed = 'Unknown Model';
       try {
         response = await sendDeepSeekChat([
           {
@@ -70,6 +71,7 @@ export const BrahmastraUltraAgent: React.FC<Props> = ({ onSelectAgentForPrompt, 
             content: userPrompt
           }
         ], { apiKey: deepseekKey });
+        modelUsed = 'DeepSeek Model (Direct)';
       } catch (dsDirectError: any) {
         console.log('Direct DeepSeek failed, trying server-side proxy...');
         const geminiApiKey = localStorage.getItem('gemini_api_key') || '';
@@ -86,15 +88,16 @@ export const BrahmastraUltraAgent: React.FC<Props> = ({ onSelectAgentForPrompt, 
         if (srvRes.ok) {
           const data = await srvRes.json();
           response = data.reply;
+          modelUsed = data.modelUsed || 'Hybrid Engine';
         } else {
           throw new Error('Server connection issue');
         }
       }
 
       setTotalOperations(prev => prev + 1);
-      setLastAction(`DeepSeek code generation completed at ${new Date().toLocaleTimeString()}`);
+      setLastAction(`Model [${modelUsed}] code generation completed at ${new Date().toLocaleTimeString()}`);
       setTerminalOutput((prev) => 
-        `\n[బ్రహ్మాస్త్ర 3.5 అల్ట్రా స్పందన]:\n${response}\n` + prev
+        `\n[బ్రహ్మాస్త్ర 3.5 అల్ట్రా స్పందన - ${modelUsed}]:\n${response}\n` + prev
       );
     } catch (err: any) {
       setTerminalOutput((prev) => 

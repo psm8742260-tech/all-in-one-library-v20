@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
 import fs from 'fs';
+import multer from 'multer';
 import { GoogleGenAI, Type } from '@google/genai';
 import { INITIAL_BOOKS } from './src/data/books.ts';
 
@@ -10,6 +11,12 @@ dotenv.config();
 // Safe Database interface
 let db: any = null;
 let inMemoryBooks: any[] = [...INITIAL_BOOKS];
+
+// Global cache for AI-generated book pages to prevent redundant API calls and quota issues
+const pageCache = new Map<string, string[]>();
+
+// Utility for exponential backoff or simple delay
+const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
 
 try {
   const { DatabaseSync } = require('node:sqlite');
@@ -27,9 +34,19 @@ try {
       costToUnlock INTEGER DEFAULT 0,
       costPerMinute INTEGER DEFAULT 0,
       coverUrl TEXT,
-      folderId TEXT
+      folderId TEXT,
+      audioUrl TEXT,
+      videoUrl TEXT
     )
   `);
+
+  // Migration: Ensure existing tables have audioUrl and videoUrl columns
+  try {
+    db.exec("ALTER TABLE books ADD COLUMN audioUrl TEXT");
+  } catch (e) {}
+  try {
+    db.exec("ALTER TABLE books ADD COLUMN videoUrl TEXT");
+  } catch (e) {}
 
   // Seed database with initial books if empty
   const rowCountQuery = db.prepare("SELECT COUNT(*) as count FROM books");
@@ -78,13 +95,60 @@ app.get('/api/app-control', (req, res) => {
   });
 });
 
+// Admin Storage: Permanent File Upload System
+const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads');
+if (!fs.existsSync(UPLOAD_DIR)) {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, UPLOAD_DIR);
+  },
+  filename: (req, file, cb) => {
+    // Ensuring permanent naming with timestamp
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9.]/g, '_');
+    cb(null, `ADMIN_PERMANENT_${Date.now()}_${safeName}`);
+  }
+});
+
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 150 * 1024 * 1024 } // 150MB limit for ultra quality
+});
+
+app.post('/api/upload', upload.single('file'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  const fileUrl = `/uploads/${req.file.filename}`;
+  console.log(`[Admin Permanent Storage] Saved: ${req.file.filename}`);
+  res.json({ url: fileUrl, fileName: req.file.originalname });
+});
+
+// Serve the uploads directory statically
+app.use('/uploads', express.static(UPLOAD_DIR));
+
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 // Helper to decode Base64 encoded API keys or return plain text if not encoded
 function decodeApiKey(key: string | undefined): string {
   if (!key) return '';
-  const trimmed = key.trim();
+  let trimmed = key.trim();
   if (!trimmed) return '';
+
+  // Clean potential single/double quotes from environment variables
+  if ((trimmed.startsWith("'") && trimmed.endsWith("'")) || (trimmed.startsWith('"') && trimmed.endsWith('"'))) {
+    trimmed = trimmed.substring(1, trimmed.length - 1).trim();
+  }
+
+  // Handle common stringified null/undefined placeholders
+  if (trimmed === 'undefined' || trimmed === 'null' || !trimmed) {
+    if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== key) {
+      return decodeApiKey(process.env.GEMINI_API_KEY);
+    }
+    return '';
+  }
 
   // If it's already a plain text key starting with a known prefix
   if (trimmed.startsWith('AIzaSy') || trimmed.startsWith('sk-') || trimmed.startsWith('AQ.')) {
@@ -94,9 +158,13 @@ function decodeApiKey(key: string | undefined): string {
   try {
     // Try to decode Base64
     const decoded = Buffer.from(trimmed, 'base64').toString('utf8').trim();
+    let cleanDecoded = decoded;
+    if ((cleanDecoded.startsWith("'") && cleanDecoded.endsWith("'")) || (cleanDecoded.startsWith('"') && cleanDecoded.endsWith('"'))) {
+      cleanDecoded = cleanDecoded.substring(1, cleanDecoded.length - 1).trim();
+    }
     // Verify if the decoded key starts with a valid prefix
-    if (decoded.startsWith('AIzaSy') || decoded.startsWith('sk-') || decoded.startsWith('AQ.')) {
-      return decoded;
+    if (cleanDecoded.startsWith('AIzaSy') || cleanDecoded.startsWith('sk-') || cleanDecoded.startsWith('AQ.')) {
+      return cleanDecoded;
     }
   } catch (error) {
     // Ignore error
@@ -125,7 +193,8 @@ function getAI(): GoogleGenAI {
 }
 
 function getAIWithKey(customKey?: string): GoogleGenAI {
-  const rawKey = customKey || process.env.GEMINI_API_KEY || 'DUMMY_KEY_TO_PREVENT_STARTUP_CRASH';
+  const cleanedCustomKey = (customKey && customKey !== 'undefined' && customKey !== 'null') ? customKey : undefined;
+  const rawKey = cleanedCustomKey || process.env.GEMINI_API_KEY || 'DUMMY_KEY_TO_PREVENT_STARTUP_CRASH';
   const apiKey = decodeApiKey(rawKey);
   return new GoogleGenAI({
     apiKey,
@@ -155,10 +224,20 @@ function parseBase64DataUri(dataUri: string) {
 
 
 async function generateOriginalBookPages(title: string, author: string, description: string, medianPages?: number): Promise<string[]> {
-  try {
-    const aiInstance = getAI();
-    const pageCount = medianPages ? Math.min(Math.max(Math.round(medianPages / 20), 5), 12) : 10;
-    const prompt = `You are an elite literary scholar and Telugu translator. Write highly authentic, immersive, and comprehensive reading content in Telugu for the book titled "${title}" by "${author}".
+  const cacheKey = `${title}-${author}`.toLowerCase();
+  if (pageCache.has(cacheKey)) {
+    console.log(`Serving generated pages from memory cache for: ${title}`);
+    return pageCache.get(cacheKey)!;
+  }
+
+  const maxRetries = 3;
+  let lastError = null;
+
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const aiInstance = getAI();
+      const pageCount = medianPages ? Math.min(Math.max(Math.round(medianPages / 20), 5), 12) : 10;
+      const prompt = `You are an elite literary scholar and Telugu translator. Write highly authentic, immersive, and comprehensive reading content in Telugu for the book titled "${title}" by "${author}".
 The book is described as: "${description}".
 This book historically has approximately ${medianPages || 150} pages in standard physical print.
 
@@ -172,25 +251,40 @@ Example Format:
   ...
 ]`;
 
-    const response = await aiInstance.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-      }
-    });
+      const response = await aiInstance.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+        }
+      });
 
-    if (response && response.text) {
-      const parsed = JSON.parse(response.text.trim());
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map(p => String(p));
+      if (response && response.text) {
+        const parsed = JSON.parse(response.text.trim());
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const formattedPages = parsed.map(p => String(p));
+          pageCache.set(cacheKey, formattedPages);
+          return formattedPages;
+        }
       }
+    } catch (e: any) {
+      lastError = e;
+      const isQuotaError = e.message?.includes('429') || e.status === 429 || JSON.stringify(e).includes('429');
+      
+      if (isQuotaError && i < maxRetries - 1) {
+        const waitTime = (i + 1) * 2000;
+        console.warn(`Gemini Quota Exceeded (429) for ${title}. Retrying in ${waitTime}ms... (Attempt ${i + 1}/${maxRetries})`);
+        await sleep(waitTime);
+        continue;
+      }
+      
+      console.error(`Gemini book page generation failed (Attempt ${i + 1}/${maxRetries}):`, e.message);
+      if (!isQuotaError) break; // Don't retry if it's not a quota error
     }
-  } catch (e) {
-    console.error("Gemini book page generation failed, using robust fallback:", e);
   }
 
-  // Safe fallback if generation fails
+  // Safe fallback if generation fails after retries
+  console.log(`Using robust fallback pages for ${title} due to: ${lastError?.message || 'Unknown Error'}`);
   return [
     `శీర్షిక: ${title}\n\nరచయిత: ${author}\n\nఈ గ్రంథం ఓపెన్ లైబ్రరీ ద్వారా విజయవంతంగా సేకరించబడింది. చదవడం కొనసాగించడానికి పేజీలు తిప్పండి.`,
     `అధ్యాయం 1: గ్రంథ పరిచయం\n\n${description || "ఈ పుస్తకం గురించిన వివరణ త్వరలోనే లభిస్తుంది."}`,
@@ -200,10 +294,10 @@ Example Format:
 }
 
 
-// Endpoint: Direct Bridge Proxy Gateway
+// Endpoint: Direct Bridge Proxy Gateway with Local AI Caching Fallback
 app.post('/api/fetch-secure-book', async (req, res) => {
   try {
-    const { title } = req.body;
+    const { title, id } = req.body;
     
     // Direct Bridge Proxy Gateway Configuration
     const CONFIG = {
@@ -213,27 +307,164 @@ app.post('/api/fetch-secure-book', async (req, res) => {
     
     const decodedToken = Buffer.from(CONFIG.GATEWAY_TOKEN, 'base64').toString('utf8');
     
-    // Establishing direct bridge
-    const response = await fetch(CONFIG.API_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${decodedToken}`
-      },
-      body: JSON.stringify({ title })
-    });
+    let bookData: any = null;
 
-    if (!response.ok) {
-      throw new Error(`Gateway communication failed with status: ${response.status}`);
+    try {
+      // SMART AGENT LOGIC: Check Local Library First
+      if (db) {
+        const localCheck = db.prepare("SELECT * FROM books WHERE title = ? OR id = ?").get(title, id) as any;
+        if (localCheck && localCheck.chapters && JSON.parse(localCheck.chapters).length > 0) {
+          console.log(`[Smart Agent] Found "${title}" in local library. Serving directly.`);
+          localCheck.chapters = JSON.parse(localCheck.chapters);
+          return res.json({ success: true, book: localCheck });
+        }
+      }
+
+      // If not in local, fetch from International Library Bridge
+      const response = await fetch(CONFIG.API_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${decodedToken.replace(/[\u0000-\u001F\u007F-\uFFFF]/g, "")}`
+        },
+        body: JSON.stringify({ title, id, fullAccess: true })
+      });
+
+      if (response.ok) {
+        bookData = await response.json();
+        if (bookData && bookData.book) {
+          const fetchedBook = bookData.book;
+          
+          // SMART AUTO-SAVE: Save fetched book to local library immediately
+          if (db) {
+            try {
+              const insertStmt = db.prepare(`
+                INSERT INTO books (id, title, author, description, category, chapters, costToUnlock, costPerMinute, coverUrl, folderId, audioUrl, videoUrl)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET 
+                  chapters=excluded.chapters,
+                  folderId=COALESCE(books.folderId, excluded.folderId)
+              `);
+              insertStmt.run(
+                fetchedBook.id,
+                fetchedBook.title,
+                fetchedBook.author,
+                fetchedBook.description || '',
+                fetchedBook.category || 'General Books',
+                JSON.stringify(fetchedBook.chapters || []),
+                fetchedBook.costToUnlock || 20,
+                fetchedBook.costPerMinute || 1,
+                fetchedBook.coverUrl || '',
+                fetchedBook.folderId || 'fol-general',
+                fetchedBook.audioUrl || '',
+                fetchedBook.videoUrl || ''
+              );
+              console.log(`[Smart Agent] Permanently saved "${fetchedBook.title}" to local general library.`);
+            } catch (saveErr) {
+              console.error("[Smart Agent] Failed to auto-save fetched book:", saveErr);
+            }
+          }
+          
+          return res.json({ success: true, book: fetchedBook });
+        }
+      }
+    } catch (err) {
+      console.error("Direct Gateway connection failed:", err);
     }
 
-    const bookData = await response.json();
+    // Local Fallback only if Bridge is completely down
+    console.log(`[Local Fallback] Bridge unavailable. Generating local chapters for: "${title}"`);
     
-    // Mirroring data directly back to reader
+    // Look up book metadata locally
+    let bookMeta: any = null;
+    if (db) {
+      try {
+        const stmt = db.prepare("SELECT * FROM books WHERE title = ?");
+        bookMeta = stmt.get(title) as any;
+      } catch (dbErr) {
+        console.warn("Local DB lookup failed in fetch-secure-book", dbErr);
+      }
+    }
+    
+    if (!bookMeta) {
+      bookMeta = inMemoryBooks.find(b => b.title === title || b.title.includes(title));
+    }
+
+    const author = bookMeta?.author || "ప్రాచీన సిద్ధులు / ఋషులు";
+    const description = bookMeta?.description || `ప్రాచీన తాళపత్ర గ్రంథాల నుండి సేకరించబడిన అరుదైన మరియు నిగూఢమైన రహస్యాలు. ${title} గ్రంథం.`;
+
+    // Generate pages using our highly optimized AI generator
+    const pages = await generateOriginalBookPages(title, author, description);
+    
+    const chapters = pages.map((pageText, index) => {
+      const lines = pageText.split('\n');
+      const firstLine = lines[0]?.trim() || '';
+      const chapterTitle = firstLine.startsWith('అధ్యాయం') || firstLine.startsWith('శీర్షిక')
+        ? firstLine
+        : `పత్రం ${index + 1} (తాళపత్ర అధ్యాయం ${index + 1})`;
+      const content = lines.slice(1).join('\n').trim() || pageText;
+
+      return {
+        id: `${bookMeta?.id || 'book'}-gen-ch-${index + 1}`,
+        title: chapterTitle,
+        content: content
+      };
+    });
+
+    const updatedBook = {
+      id: bookMeta?.id || `palm-${Math.random().toString(36).substring(2, 9)}`,
+      title,
+      author,
+      description,
+      category: bookMeta?.category || "తాళపత్ర గ్రంథాలు",
+      chapters: chapters,
+      costToUnlock: bookMeta?.costToUnlock || 20,
+      costPerMinute: bookMeta?.costPerMinute || 1,
+      coverUrl: bookMeta?.coverUrl || "",
+      folderId: bookMeta?.folderId || "fol-talapatra"
+    };
+
+    // Save permanently in database/memory so it caches
+    if (db) {
+      try {
+        const insertStmt = db.prepare(`
+          INSERT INTO books (id, title, author, description, category, chapters, costToUnlock, costPerMinute, coverUrl, folderId)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET chapters=excluded.chapters
+        `);
+        insertStmt.run(
+          updatedBook.id,
+          updatedBook.title,
+          updatedBook.author,
+          updatedBook.description,
+          updatedBook.category,
+          JSON.stringify(updatedBook.chapters),
+          updatedBook.costToUnlock,
+          updatedBook.costPerMinute,
+          updatedBook.coverUrl,
+          updatedBook.folderId
+        );
+        console.log(`Successfully saved generated chapters to DB for "${title}"`);
+      } catch (dbSaveErr) {
+        console.error("Failed to save generated book to local SQLite DB:", dbSaveErr);
+      }
+    } else {
+      const idx = inMemoryBooks.findIndex(b => b.id === updatedBook.id);
+      if (idx >= 0) {
+        inMemoryBooks[idx] = { ...inMemoryBooks[idx], chapters: updatedBook.chapters };
+      }
+    }
+
+    return res.json({
+      success: true,
+      book: updatedBook
+    });
+
+    // Mirroring data directly back to reader if gateway succeeded
     res.json({ success: true, ...bookData });
 
   } catch (error) {
-    console.error("Direct Bridge Proxy Gateway Error:", error);
+    console.error("Direct Bridge Proxy Gateway & Fallback Error:", error);
     res.status(500).json({ 
       success: false, 
       message: "Secure library connection could not be established." 
@@ -288,7 +519,7 @@ app.post('/api/test-key', async (req, res) => {
       try {
         const testAi = getAIWithKey(apiKey);
         const testRes = await testAi.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: 'gemini-3.5-flash',
           contents: 'Ping',
           config: { maxOutputTokens: 5 }
         });
@@ -423,6 +654,9 @@ Instructions:
           if (!repaired.endsWith('}')) repaired += '}';
           result = JSON.parse(repaired);
         }
+        
+        // Add model info for Dynamic Model Switching
+        result.modelUsed = "DeepSeek Model";
         return res.json(result);
       } catch (dsError: any) {
         console.error('DeepSeek chat failed, falling back to Gemini:', dsError.message);
@@ -462,10 +696,10 @@ Instructions:
       };
     });
 
-    // Generate response using gemini-1.5-flash (highly optimized modern model)
+    // Generate response using gemini-3.5-flash (highly optimized modern model)
     const activeAi = getAIWithKey(req.body.geminiApiKey);
     const response = await activeAi.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-3.5-flash',
       contents: [
         { role: 'user', parts: [{ text: systemPrompt }] },
         ...chatMessages
@@ -506,14 +740,18 @@ Instructions:
 
     const jsonText = response.text || '{}';
     const result = JSON.parse(jsonText);
+    result.modelUsed = "Gemini Model";
     res.json(result);
   } catch (error: any) {
     console.error('Error in /api/chat:', error);
     const lastUserMsg = (messages && messages[messages.length - 1]?.text) || '';
+    const errorDetails = error?.message || String(error);
     // Graceful fallback response so users never see 500 error on live
     return res.json({
-      reply: `నమస్కారం! నేను మీ బ్రహ్మాస్త్ర 3.5 అల్ట్రా AI లైబ్రేరియన్‌ని. మీ అభ్యర్థన "${lastUserMsg}" అందింది. మన గ్రంథాలయంలో 308 ప్రామాణిక పుస్తకాలు మరియు 64 చతుష్షష్టి కళలు సిద్ధంగా ఉన్నాయి. లైబ్రరీ లేదా షెల్ఫ్ ట్యాబ్‌లలో మీకు కావలసిన పుస్తకాన్ని ఎంచుకుని చదువుకోవచ్చు!`,
-      recommendedBooks: []
+      reply: `నమస్కారం అడ్మిన్ గారు! క్షమించాలి, తాత్కాలికంగా నెట్‌వర్క్ సమస్య ఏర్పడింది. దయచేసి మరోసారి ప్రయత్నించండి.\n\n(Error: ${errorDetails})`,
+      recommendedBooks: [],
+      modelUsed: "System Fallback",
+      error: errorDetails
     });
   }
 });
@@ -723,8 +961,8 @@ app.post('/api/books', (req, res) => {
 
     if (db) {
       const insertStmt = db.prepare(`
-        INSERT INTO books (id, title, author, description, category, chapters, costToUnlock, costPerMinute, coverUrl, folderId)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO books (id, title, author, description, category, chapters, costToUnlock, costPerMinute, coverUrl, folderId, audioUrl, videoUrl)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           title=excluded.title,
           author=excluded.author,
@@ -734,7 +972,9 @@ app.post('/api/books', (req, res) => {
           costToUnlock=excluded.costToUnlock,
           costPerMinute=excluded.costPerMinute,
           coverUrl=excluded.coverUrl,
-          folderId=excluded.folderId
+          folderId=excluded.folderId,
+          audioUrl=excluded.audioUrl,
+          videoUrl=excluded.videoUrl
       `);
 
       insertStmt.run(
@@ -747,7 +987,9 @@ app.post('/api/books', (req, res) => {
         book.costToUnlock || 0,
         book.costPerMinute || 0,
         book.coverUrl || '',
-        book.folderId || ''
+        book.folderId || '',
+        book.audioUrl || '',
+        book.videoUrl || ''
       );
     } else {
       const idx = inMemoryBooks.findIndex(b => b.id === book.id);
@@ -791,8 +1033,18 @@ app.post('/api/agent/chat', async (req, res) => {
     }
 
     // Fetch all books from SQLite as metadata context
-    const stmt = db.prepare("SELECT id, title, author, description, category, costToUnlock, costPerMinute, folderId FROM books");
-    const books = stmt.all() as any[];
+    const books = db
+      ? (db.prepare("SELECT id, title, author, description, category, costToUnlock, costPerMinute, folderId FROM books").all() as any[])
+      : inMemoryBooks.map(b => ({
+          id: b.id,
+          title: b.title,
+          author: b.author,
+          description: b.description || '',
+          category: b.category || '',
+          costToUnlock: b.costToUnlock || 0,
+          costPerMinute: b.costPerMinute || 0,
+          folderId: b.folderId || ''
+        }));
 
     const systemPrompt = `You are the DeepSeek-powered Core Database Agent for the "All in One Library" system running on the PHRS Server.
 Your job is to manage, search, query, and chat with the admin about the central SQLite database containing ${books.length} books.
@@ -1086,7 +1338,13 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, {
+      setHeaders: (res, path) => {
+        if (path.endsWith('sw.js')) {
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        }
+      }
+    }));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
