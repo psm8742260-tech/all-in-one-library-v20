@@ -174,11 +174,12 @@ export default function App() {
   };
 
   const handleOpenReader = async (book: Book) => {
-    // If book is missing chapters/content or has dummy text, fetch from Secure International Library
-    const hasDummyText = book.chapters?.some(ch => ch.content?.includes('ఉదాహరణ కోసం ఉంచబడిన పాఠ్యం'));
+    // If book is missing chapters/content or has dummy placeholder text, fetch from Secure International Library
+    const hasDummyText = book.chapters?.some(ch => ch.content?.includes('ఉదాహరణ కోసం ఉంచబడిన పాఠ్యం') || ch.content?.includes('ఈ అధ్యాయంలో సమాచారం ఇంకా పూర్తికాలేదు'));
     const isMissingContent = !book.chapters?.length && !book.content && !book.pages;
+    const isPdf = !!(book.pdfUrl || (book.fileUrl && book.fileUrl.includes('.pdf')) || book.contentType === 'pdf' || book.chapters?.some(ch => ch.content?.includes('.pdf') || ch.title?.includes('.pdf')) || (book.description && book.description.includes('.pdf')));
     
-    if (hasDummyText || isMissingContent) {
+    if ((hasDummyText || isMissingContent) && !isPdf) {
       try {
         const res = await fetch('/api/fetch-secure-book', {
           method: 'POST',

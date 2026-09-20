@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   ShieldCheck, Upload, Trash2, Plus, X, BookOpen, AlertCircle, 
   Check, Lock, Sparkles, FolderPlus, Settings, Users, Bot, Zap, Folder as FolderIcon,
-  QrCode, IndianRupee, CheckCircle2, Copy, Mic, Film, Play, Music, Radio, Globe, Youtube
+  QrCode, IndianRupee, CheckCircle2, Copy, Mic, Film, Play, Music, Radio, Globe, Youtube,
+  FileText, Loader2
 } from 'lucide-react';
 import { Book, Folder, User, LanguageCode, TRANSLATIONS, WriterApplication, ContentType, RegisteredTree } from '../types';
 import BrahmastraUltraAgent from './BrahmastraUltraAgent';
@@ -73,6 +74,7 @@ export default function AdminPanel({
   const [coverImage, setCoverImage] = useState('');
   const [audioUrl, setAudioUrl] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
+  const [uploadedPdfUrl, setUploadedPdfUrl] = useState('');
 
   // Chapters Form State
   const [chapters, setChapters] = useState<{ title: string; content: string }[]>([
@@ -81,6 +83,8 @@ export default function AdminPanel({
   ]);
 
   const [notification, setNotification] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [uploadSeconds, setUploadSeconds] = useState<number>(0);
   const [expandedStoryId, setExpandedStoryId] = useState<string | null>(null);
   const [youtubePublishApp, setYoutubePublishApp] = useState<WriterApplication | null>(null);
   const [ytTitle, setYtTitle] = useState('');
@@ -108,10 +112,54 @@ export default function AdminPanel({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // 1. INSTANT AUTO-FEEDING (0.01s instant UI update for Title, Author & Content Type)
+    const rawFileName = file.name;
+    const autoBaseName = rawFileName.replace(/\.[^/.]+$/, "").trim();
+    
+    let extractedTitle = autoBaseName;
+    let extractedAuthor = '';
+
+    if (autoBaseName.includes(' By ')) {
+      const parts = autoBaseName.split(' By ');
+      extractedTitle = parts[0].trim();
+      extractedAuthor = parts.slice(1).join(' By ').trim();
+    } else if (autoBaseName.includes(' by ')) {
+      const parts = autoBaseName.split(' by ');
+      extractedTitle = parts[0].trim();
+      extractedAuthor = parts.slice(1).join(' by ').trim();
+    } else if (autoBaseName.includes(' - ')) {
+      const parts = autoBaseName.split(' - ');
+      extractedTitle = parts[0].trim();
+      extractedAuthor = parts.slice(1).join(' - ').trim();
+    } else if (autoBaseName.includes('_by_')) {
+      const parts = autoBaseName.split('_by_');
+      extractedTitle = parts[0].replace(/_/g, ' ').trim();
+      extractedAuthor = parts.slice(1).join('_by_').replace(/_/g, ' ').trim();
+    }
+
+    setTitle(extractedTitle);
+    if (extractedAuthor) {
+      setAuthor(extractedAuthor);
+    }
+
+    const isPdf = file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
+    const isImage = file.type.startsWith('image/');
+    if (isPdf) {
+      setContentType('pdf');
+    }
+    setFolderId('fol-general');
+
+    // 2. START ROUND SPINNER & LIVE TIMER
+    setIsUploading(true);
+    setUploadSeconds(0);
+    const timerInterval = setInterval(() => {
+      setUploadSeconds(prev => prev + 1);
+    }, 1000);
+
     const formData = new FormData();
     formData.append('file', file);
 
-    setNotification('ఫైల్ అప్‌లోడ్ అవుతోంది... (Uploading to Admin Quarter)');
+    setNotification(`ఫైల్ అప్‌లోడ్ అవుతోంది... (${(file.size / (1024 * 1024)).toFixed(1)} MB)`);
 
     try {
       const response = await fetch('/api/upload', {
@@ -119,24 +167,42 @@ export default function AdminPanel({
         body: formData,
       });
 
-      if (response.ok) {
-        const data = await response.json();
+      const responseText = await response.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseErr) {
+        console.error('Upload error: Non-JSON response received:', responseText.slice(0, 300));
+        throw new Error('సర్వర్ నుండి అవాంఛిత రెస్పాన్స్ వచ్చింది.');
+      }
+
+      if (response.ok && data && data.url) {
         const url = data.url;
         
-        // Auto-assign to General folder and set metadata
-        setFolderId('fol-general'); 
-        
-        const isImage = file.type.startsWith('image/');
         if (contentType === 'audio') setAudioUrl(url);
         else if (contentType === 'video') setVideoUrl(url);
         else if (isImage) setCoverImage(url);
+        else if (isPdf) {
+          setUploadedPdfUrl(url);
+          setContentType('pdf');
+          setDescription(prev => `${prev}\n[PDF File: ${url}]`);
+          setChapters([{ title: `PDF: ${file.name}`, content: `PDF Document URL: ${url}` }]);
+        }
         else {
           setDescription(prev => `${prev}\n[System: File saved at ${url}]`);
           setChapters([{ title: `అప్‌లోడ్ చేసిన ఫైల్: ${file.name}`, content: `ఈ పుస్తకం యొక్క ఫైల్ ఇక్కడ భద్రపరచబడింది: ${url}` }]);
         }
+
+        // If server provided better clean name and author was not found, try parsing again
+        if (data.fileName && !extractedAuthor) {
+          const sName = data.fileName.replace(/\.[^/.]+$/, "").trim();
+          if (sName.includes(' By ')) {
+            const parts = sName.split(' By ');
+            setTitle(parts[0].trim());
+            setAuthor(parts.slice(1).join(' By ').trim());
+          }
+        }
         
-        const autoTitle = data.fileName?.split('.')[0] || file.name.split('.')[0];
-        setTitle(autoTitle);
         setNotification('✅ ఫైల్ సిద్ధంగా ఉంది. మీరు సేవ్ చేయండి లేదా 10 నిమిషాల్లో ఆటోమేటిక్ గా సేవ్ అవుతుంది.');
 
         // 10-MINUTE DELAYED AUTO-SAVE LOGIC
@@ -151,13 +217,16 @@ export default function AdminPanel({
           }
         }, 10 * 60 * 1000); // 10 minutes (600,000ms)
 
-        setTimeout(() => setNotification(null), 6000);
+        setTimeout(() => setNotification(null), 8000);
       } else {
-        setNotification('❌ అప్‌లోడ్ విఫలమైంది. ఫైల్ సైజు తనిఖీ చేయండి.');
+        setNotification(`❌ అప్‌లోడ్ విఫలమైంది: ${data?.error || 'ఫైల్ సైజు లేదా నెట్‌వర్క్ తనిఖీ చేయండి.'}`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Upload error:', err);
-      setNotification('❌ సర్వర్ కనెక్షన్ లోపం.');
+      setNotification(`❌ ${err.message || 'సర్వర్ కనెక్షన్ లోపం.'}`);
+    } finally {
+      clearInterval(timerInterval);
+      setIsUploading(false);
     }
   };
 
@@ -601,6 +670,7 @@ export default function AdminPanel({
     setCoverImage('');
     setAudioUrl('');
     setVideoUrl('');
+    setUploadedPdfUrl('');
     setChapters([
       { title: 'Chapter 1: Introduction', content: '' },
       { title: 'Chapter 2: Core Concepts', content: '' }
@@ -619,10 +689,12 @@ export default function AdminPanel({
       title: title.trim(),
       author: author.trim(),
       category: category.trim() || 'General',
-      contentType,
+      contentType: (uploadedPdfUrl.trim() && contentType === 'text') ? 'pdf' : contentType,
       audioUrl: contentType === 'audio' ? audioUrl.trim() || undefined : undefined,
       videoUrl: contentType === 'video' ? videoUrl.trim() || undefined : undefined,
-      description: description.trim() || (contentType === 'audio' ? 'వాయిస్ ఆడియో కథ' : contentType === 'video' ? 'వీడియో కథ' : 'నో డిస్క్రిప్షన్'),
+      pdfUrl: uploadedPdfUrl.trim() || undefined,
+      fileUrl: uploadedPdfUrl.trim() || undefined,
+      description: description.trim() || (contentType === 'audio' ? 'వాయిస్ ఆడియో కథ' : contentType === 'video' ? 'వీడియో కథ' : (uploadedPdfUrl.trim() ? `[PDF File: ${uploadedPdfUrl.trim()}]` : 'నో డిస్క్రిప్షన్')),
       coverImage: coverImage.trim() || (
         contentType === 'audio' 
           ? 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80'
@@ -637,7 +709,7 @@ export default function AdminPanel({
       chapters: chapters.map((ch, idx) => ({
         id: `ch-${idx + 1}`,
         title: ch.title.trim() || `Chapter ${idx + 1}`,
-        content: ch.content.trim() || `ఈ అధ్యాయంలో సమాచారం ఇంకా పూర్తికాలేదు.`,
+        content: ch.content.trim() || (uploadedPdfUrl.trim() ? `[PDF File: ${uploadedPdfUrl.trim()}]` : `ఈ అధ్యాయంలో సమాచారం ఇంకా పూర్తికాలేదు.`),
         audioUrl: contentType === 'audio' ? audioUrl : undefined,
         videoUrl: contentType === 'video' ? videoUrl : undefined
       }))
@@ -662,6 +734,12 @@ export default function AdminPanel({
       }
     } else {
       onAddBook(newBook);
+      // Also persist to server SQLite database
+      fetch('/api/books', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newBook)
+      }).catch(err => console.error('Upload book server sync error:', err));
       setIsUploadSuccess(true);
       setNotification(
         contentType === 'audio' 
@@ -867,8 +945,19 @@ export default function AdminPanel({
               </button>
             </div>
 
-            {/* Notification Bar */}
-            {notification && (
+            {/* Notification & Upload Progress Bar with Circular Spinner and Timer */}
+            {isUploading ? (
+              <div className="bg-amber-500/15 border-b border-amber-500/30 text-amber-900 px-6 py-2.5 text-xs font-semibold flex items-center justify-between animate-pulse">
+                <div className="flex items-center gap-2.5">
+                  <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
+                  <span>{notification || 'ఫైల్ అప్‌లోడ్ అవుతోంది...'}</span>
+                </div>
+                <div className="flex items-center gap-2 font-mono text-[11px] bg-amber-200/80 border border-amber-300 px-2.5 py-0.5 rounded-full text-amber-900">
+                  <span className="w-2 h-2 rounded-full bg-amber-600 animate-ping inline-block" />
+                  <span>⏳ {uploadSeconds}s</span>
+                </div>
+              </div>
+            ) : notification && (
               <div className="bg-emerald-500/10 border-b border-emerald-500/20 text-emerald-600 px-6 py-2.5 text-xs font-semibold flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Check className="w-4 h-4" />
@@ -1243,6 +1332,33 @@ export default function AdminPanel({
                   </div>
                 )}
 
+                {(contentType === 'text' || contentType === 'pdf' || uploadedPdfUrl) && (
+                  <div>
+                    <label className="block text-xs font-semibold text-blue-800 mb-1 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>పీడీఎఫ్ / ఈబుక్ ఫైల్ URL (PDF / E-Book Document Link)</span>
+                      </span>
+                      {uploadedPdfUrl && (
+                        <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300">
+                          ✅ ఫైల్ లింక్ చేయబడింది
+                        </span>
+                      )}
+                    </label>
+                    <input
+                      type="text"
+                      value={uploadedPdfUrl}
+                      onChange={(e) => {
+                        setUploadedPdfUrl(e.target.value);
+                        if (e.target.value.trim().length > 0) setContentType('pdf');
+                      }}
+                      placeholder="ఉదా: /uploads/yantra_shakti.pdf లేదా https://.../book.pdf"
+                      className="w-full bg-orange-50 border border-blue-400/50 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                      id="admin-pdf-url-input"
+                    />
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-slate-800 mb-1">
@@ -1577,7 +1693,8 @@ export default function AdminPanel({
                                     setCoverImage(book.coverImage || book.coverUrl || '');
                                     setAudioUrl(book.audioUrl || '');
                                     setVideoUrl(book.videoUrl || '');
-                                    setContentType(book.contentType || 'text');
+                                    setUploadedPdfUrl(book.pdfUrl || book.fileUrl || '');
+                                    setContentType(book.contentType || (book.pdfUrl ? 'pdf' : 'text'));
                                     if (book.chapters && book.chapters.length > 0) {
                                       setChapters(book.chapters.map(c => ({ title: c.title, content: c.content })));
                                     }
@@ -1589,13 +1706,21 @@ export default function AdminPanel({
                                 </button>
                                  <button
                                   onClick={() => {
-                                    if (confirm(`"${book.title}" ను టెంపరరీ ఫోల్డర్ కు తరలించాలనుకుంటున్నారా?`)) {
-                                      if (onUpdateBooks) {
-                                        onUpdateBooks(books.map(b => b.id === book.id ? { ...b, folderId: 'fol-trash' } : b));
-                                        setNotification(`"${book.title}" టెంపరరీ ఫోల్డర్ కు తరలించబడింది!`);
-                                        setTimeout(() => setNotification(null), 3000);
-                                      }
+                                    const updatedBook = { ...book, folderId: 'fol-trash' };
+                                    if (onUpdateBooks) {
+                                      onUpdateBooks(books.map(b => b.id === book.id ? updatedBook : b));
                                     }
+                                    try {
+                                      fetch('/api/books', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify(updatedBook)
+                                      });
+                                    } catch (e) {
+                                      console.error('Failed to sync trash book to backend:', e);
+                                    }
+                                    setNotification(`"${book.title}" టెంపరరీ ఫోల్డర్ కు తరలించబడింది!`);
+                                    setTimeout(() => setNotification(null), 3000);
                                   }}
                                   className="bg-rose-50 hover:bg-rose-500 text-rose-600 hover:text-white border border-rose-200 hover:border-rose-500 rounded-lg px-2.5 py-1 text-[10px] font-black transition cursor-pointer"
                                   id={`delete-book-btn-${book.id}`}
@@ -1672,7 +1797,8 @@ export default function AdminPanel({
                                   setCoverImage(book.coverImage || book.coverUrl || '');
                                   setAudioUrl(book.audioUrl || '');
                                   setVideoUrl(book.videoUrl || '');
-                                  setContentType(book.contentType || 'text');
+                                  setUploadedPdfUrl(book.pdfUrl || book.fileUrl || '');
+                                  setContentType(book.contentType || (book.pdfUrl ? 'pdf' : 'text'));
                                   if (book.chapters && book.chapters.length > 0) {
                                     setChapters(book.chapters.map(c => ({ title: c.title, content: c.content })));
                                   }
@@ -1684,13 +1810,21 @@ export default function AdminPanel({
                               </button>
                                  <button
                                   onClick={() => {
-                                    if (confirm(`"${book.title}" ను టెంపరరీ ఫోల్డర్ కు తరలించాలనుకుంటున్నారా?`)) {
-                                      if (onUpdateBooks) {
-                                        onUpdateBooks(books.map(b => b.id === book.id ? { ...b, folderId: 'fol-trash' } : b));
-                                        setNotification(`"${book.title}" టెంపరరీ ఫోల్డర్ కు తరలించబడింది!`);
-                                        setTimeout(() => setNotification(null), 3000);
-                                      }
+                                    const updatedBook = { ...book, folderId: 'fol-trash' };
+                                    if (onUpdateBooks) {
+                                      onUpdateBooks(books.map(b => b.id === book.id ? updatedBook : b));
                                     }
+                                    try {
+                                      fetch('/api/books', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify(updatedBook)
+                                      });
+                                    } catch (e) {
+                                      console.error('Failed to sync trash book to backend:', e);
+                                    }
+                                    setNotification(`"${book.title}" టెంపరరీ ఫోల్డర్ కు తరలించబడింది!`);
+                                    setTimeout(() => setNotification(null), 3000);
                                   }}
                                   className="bg-rose-50 hover:bg-rose-500 text-rose-600 hover:text-white border border-rose-200 hover:border-rose-500 rounded-lg px-2.5 py-1 text-[10px] font-black transition cursor-pointer"
                                   id={`delete-book-btn-palm-${book.id}`}
@@ -1714,9 +1848,9 @@ export default function AdminPanel({
                         </div>
                       ))}
 
-                      {books.filter(b => b.folderId !== 'fol-talapatra').length === 0 && (
+                      {books.filter(b => b.folderId === 'fol-talapatra').length === 0 && (
                         <div className="text-center py-8 text-slate-600 text-xs font-semibold">
-                          సాధారణ లైబ్రరీలో పుస్తకాలు లేవు.
+                          తాళపత్ర గ్రంథాల విభాగంలో పుస్తకాలు లేవు.
                         </div>
                       )}
                     </div>
@@ -1747,23 +1881,31 @@ export default function AdminPanel({
                             <div className="flex flex-col gap-1.5 shrink-0 items-end">
                               <button
                                 onClick={() => {
+                                  const restoredBook = { ...book, folderId: 'fol-general' };
                                   if (onUpdateBooks) {
-                                    onUpdateBooks(books.map(b => b.id === book.id ? { ...b, folderId: 'fol-general' } : b));
-                                    setNotification(`"${book.title}" మళ్ళీ సాధారణ లైబ్రరీకి చేర్చబడింది!`);
-                                    setTimeout(() => setNotification(null), 3000);
+                                    onUpdateBooks(books.map(b => b.id === book.id ? restoredBook : b));
                                   }
+                                  try {
+                                    fetch('/api/books', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify(restoredBook)
+                                    });
+                                  } catch (e) {
+                                    console.error('Failed to sync restored book:', e);
+                                  }
+                                  setNotification(`"${book.title}" మళ్ళీ సాధారణ లైబ్రరీకి చేర్చబడింది!`);
+                                  setTimeout(() => setNotification(null), 3000);
                                 }}
                                 className="w-full bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg px-2 py-1 text-[10px] font-black transition shadow-sm whitespace-nowrap"
                               >
-                                రీలోడ్ (Reload)
+                                రీస్టార్ట్ (Restart / Restore)
                               </button>
                               <button
                                 onClick={() => {
-                                  if (confirm(`నిజంగా "${book.title}" ను శాశ్వతంగా తొలగించాలనుకుంటున్నారా?`)) {
-                                    onDeleteBook(book.id);
-                                    setNotification(`"${book.title}" శాశ్వతంగా తొలగించబడింది!`);
-                                    setTimeout(() => setNotification(null), 3000);
-                                  }
+                                  onDeleteBook(book.id);
+                                  setNotification(`"${book.title}" శాశ్వతంగా తొలగించబడింది!`);
+                                  setTimeout(() => setNotification(null), 3000);
                                 }}
                                 className="w-full bg-rose-600 hover:bg-rose-700 text-white rounded-lg px-2 py-1 text-[10px] font-black transition shadow-sm whitespace-nowrap"
                               >

@@ -80,18 +80,29 @@ const newBooksJson = JSON.stringify(newBooks, null, 2);
 
 const existingData = fs.readFileSync('src/data/books.ts', 'utf8');
 
-// Find the end of the INITIAL_BOOKS array (the last `];`)
-const lastBracketIndex = existingData.lastIndexOf(']');
-if (lastBracketIndex !== -1) {
-  // We need to inject our items right before this closing bracket.
-  // The string to inject needs a leading comma.
-  let innerJson = newBooksJson.trim();
-  // Remove [ and ] from JSON
-  innerJson = innerJson.substring(1, innerJson.length - 1);
-  
-  const modifiedData = existingData.slice(0, lastBracketIndex) + ',\n  ' + innerJson + '\n' + existingData.slice(lastBracketIndex);
+// Check if array is empty (i.e., contains '[]' or only whitespace inside)
+const emptyArrayRegex = /INITIAL_BOOKS:\s*Book\[\]\s*=\s*\[\s*\]/;
+const isEmpty = emptyArrayRegex.test(existingData);
+
+if (isEmpty) {
+  // If empty, replace '[]' with the new books JSON
+  const modifiedData = existingData.replace(/INITIAL_BOOKS:\s*Book\[\]\s*=\s*\[\s*\]/, `INITIAL_BOOKS: Book[] = ${newBooksJson}`);
   fs.writeFileSync('src/data/books.ts', modifiedData, 'utf8');
-  console.log('Added 300 books successfully.');
+  console.log('Added 300 books successfully to empty list.');
 } else {
-  console.error('Could not find end of INITIAL_BOOKS array.');
+  // Find the end of the INITIAL_BOOKS array (the last `];`)
+  const lastBracketIndex = existingData.lastIndexOf(']');
+  if (lastBracketIndex !== -1) {
+    // We need to inject our items right before this closing bracket.
+    // The string to inject needs a leading comma.
+    let innerJson = newBooksJson.trim();
+    // Remove [ and ] from JSON
+    innerJson = innerJson.substring(1, innerJson.length - 1);
+    
+    const modifiedData = existingData.slice(0, lastBracketIndex) + ',\n  ' + innerJson + '\n' + existingData.slice(lastBracketIndex);
+    fs.writeFileSync('src/data/books.ts', modifiedData, 'utf8');
+    console.log('Added 300 books successfully.');
+  } else {
+    console.error('Could not find end of INITIAL_BOOKS array.');
+  }
 }

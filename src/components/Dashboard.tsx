@@ -100,14 +100,14 @@ export default function Dashboard({
 
   const isPdfBook = (book: Book | null) => {
     if (!book) return false;
-    const pdfPattern = /(https?:\/\/|\/uploads\/)[^\s"']+\.pdf/i;
-    return (
-      (typeof book.content === 'string' && book.content.match(pdfPattern)) ||
-      (typeof book.text === 'string' && book.text.match(pdfPattern)) ||
-      (typeof book.body === 'string' && book.body.match(pdfPattern)) ||
-      (typeof book.description === 'string' && book.description.match(pdfPattern)) ||
-      (book.chapters && book.chapters.some((ch: any) => typeof ch.content === 'string' && ch.content.match(pdfPattern)))
-    );
+    if (book.contentType === 'audio' || book.contentType === 'video') return false;
+    if (book.contentType === 'pdf') return true;
+    if (book.pdfUrl && typeof book.pdfUrl === 'string' && book.pdfUrl.trim().length > 0) return true;
+    if (book.fileUrl && (book.fileUrl.toLowerCase().includes('.pdf') || book.fileUrl.includes('/uploads/'))) return true;
+    if (book.url && book.url.toLowerCase().includes('.pdf')) return true;
+    if (book.description && book.description.includes('.pdf')) return true;
+    if (book.chapters?.some(ch => ch.content?.includes('.pdf') || ch.title?.includes('.pdf'))) return true;
+    return false;
   };
 
   // Payment Modal state for UPI QR Scanner
@@ -823,6 +823,9 @@ Downloaded from All In One Library Hub
 
   // Active books filtered by folder & category selection
   const filteredBooks = books.filter(b => {
+    if (b.folderId === 'fol-trash') {
+      return false;
+    }
     if (activeFolderId !== null && b.folderId !== activeFolderId) {
       return false;
     }

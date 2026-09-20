@@ -3,13 +3,18 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   ArrowLeft, ChevronLeft, ChevronRight, Type as FontIcon, 
   Search, Info, Clock, Coins, Lock, Sparkles, CheckCircle2, Play, Square, ZoomIn, ZoomOut,
-  Mic, Film, Music, Volume2, Video, Star, MoreVertical, FileText
+  Mic, Film, Music, Volume2, Video, Star, MoreVertical, FileText, Download
 } from 'lucide-react';
 import { Book, LanguageCode, TRANSLATIONS } from '../types';
 import * as pdfjsLib from 'pdfjs-dist';
 
-// Configure PDF.js worker path utilizing CDN for pure standard execution
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+// Configure PDF.js worker path utilizing local worker for standard offline execution
+if (typeof (Promise as any).try !== 'function') {
+  (Promise as any).try = function(fn: any, ...args: any[]) {
+    return new Promise(resolve => resolve(fn(...args)));
+  };
+}
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
 interface ReaderProps {
   book: Book;
@@ -36,14 +41,49 @@ export default function Reader({ book, credits, onClose, onDeductCredits, curren
     : (book.content || book.text || book.body || book.pages ? { title: book.title, content: Array.isArray(book.pages) ? book.pages.join('\n\n') : (book.content || book.text || book.body || '') } : null);
 
   // Detect PDF URL inside book content, text, body, chapter, description
-  const pdfUrlMatch = 
-    (typeof currentChapter?.content === 'string' && currentChapter.content.match(/(https?:\/\/|\/uploads\/)[^\s"']+\.pdf/i)) ||
-    (typeof book.content === 'string' && book.content.match(/(https?:\/\/|\/uploads\/)[^\s"']+\.pdf/i)) ||
-    (typeof book.text === 'string' && book.text.match(/(https?:\/\/|\/uploads\/)[^\s"']+\.pdf/i)) ||
-    (typeof book.body === 'string' && book.body.match(/(https?:\/\/|\/uploads\/)[^\s"']+\.pdf/i)) ||
-    (typeof book.description === 'string' && book.description.match(/(https?:\/\/|\/uploads\/)[^\s"']+\.pdf/i));
+  const getPdfUrl = () => {
+    if (book.contentType === 'audio' || book.contentType === 'video') return null;
+    
+    // Explicit PDF URL fields
+    if (book.pdfUrl && typeof book.pdfUrl === 'string' && book.pdfUrl.trim()) {
+      return book.pdfUrl.trim();
+    }
+    if (book.fileUrl && typeof book.fileUrl === 'string' && (book.fileUrl.toLowerCase().includes('.pdf') || book.fileUrl.includes('/uploads/'))) {
+      return book.fileUrl.trim();
+    }
+    if (book.url && typeof book.url === 'string' && book.url.toLowerCase().includes('.pdf')) {
+      return book.url.trim();
+    }
 
-  const pdfUrl = pdfUrlMatch ? pdfUrlMatch[0] : null;
+    const pdfPattern = /(https?:\/\/[^\s"']+\.pdf[^\s"']*|\/uploads\/[^\s"']+\.pdf[^\s"']*|data:application\/pdf;base64,[^\s"']+)/i;
+    
+    // Check chapter content and titles
+    if (Array.isArray(book.chapters)) {
+      for (const ch of book.chapters) {
+        if (typeof ch?.content === 'string') {
+          const match = ch.content.match(pdfPattern);
+          if (match) return match[0];
+        }
+        if (typeof ch?.title === 'string') {
+          const match = ch.title.match(pdfPattern);
+          if (match) return match[0];
+        }
+      }
+    }
+    
+    // Check book metadata fields
+    const fields = [book.description, book.content, book.text, book.body];
+    for (const field of fields) {
+      if (typeof field === 'string') {
+        const match = field.match(pdfPattern);
+        if (match) return match[0];
+      }
+    }
+    
+    return null;
+  };
+
+  const pdfUrl = getPdfUrl();
 
   // PDF.js rendering engine states
   const [pdfDoc, setPdfDoc] = useState<any>(null);
@@ -57,34 +97,42 @@ export default function Reader({ book, credits, onClose, onDeductCredits, curren
     setActivePageIndex(0);
   }, [activeChapterIndex]);
 
-  // Load PDF Document when pdfUrl changes
+  // Load PDF Document when pdfUrl changes.
   useEffect(() => {
     if (!pdfUrl) {
       setPdfDoc(null);
+      setPdfLoading(false);
       return;
     }
 
-    let isMounted = true;
     setPdfLoading(true);
     setPdfError(null);
 
-    const loadingTask = pdfjsLib.getDocument({ url: pdfUrl });
-    loadingTask.promise.then(
-      (loadedPdf) => {
-        if (!isMounted) return;
-        setPdfDoc(loadedPdf);
-        setPdfLoading(false);
-      },
-      (err) => {
-        if (!isMounted) return;
-        console.error("Error loading PDF: ", err);
-        setPdfError(err.message || "PDF లోడ్ చేయడంలో లోపం సంభవించింది.");
+    let isMounted = true;
+    const loadingTask = pdfjsLib.getDocument({
+      url: pdfUrl,
+      cMapUrl: 'https://unpkg.com/pdfjs-dist@' + pdfjsLib.version + '/cmaps/',
+      cMapPacked: true,
+    });
+
+    loadingTask.promise.then((doc) => {
+      if (isMounted) {
+        setPdfDoc(doc);
         setPdfLoading(false);
       }
-    );
+    }).catch((err) => {
+      console.warn("PDF.js loading warning, falling back to native iframe:", err);
+      if (isMounted) {
+        setPdfLoading(false);
+        setPdfError(err?.message || "Failed to parse PDF");
+      }
+    });
 
     return () => {
       isMounted = false;
+      try {
+        loadingTask.destroy();
+      } catch (e) {}
     };
   }, [pdfUrl]);
 
@@ -249,9 +297,9 @@ export default function Reader({ book, credits, onClose, onDeductCredits, curren
     let rawContentString = '';
     const chapterText = typeof currentChapter?.content === 'string' ? currentChapter.content : '';
     
-    if (chapterText.trim() && !chapterText.includes('ఉదాహరణ కోసం ఉంచబడిన పాఠ్యం')) {
+    if (chapterText.trim() && !chapterText.includes('ఉదాహరణ కోసం ఉంచబడిన పాఠ్యం') && !chapterText.includes('ఈ అధ్యాయంలో సమాచారం ఇంకా పూర్తికాలేదు')) {
       rawContentString = chapterText;
-    } else if (typeof book.content === 'string' && book.content.trim()) {
+    } else if (typeof book.content === 'string' && book.content.trim() && !book.content.includes('ఈ అధ్యాయంలో సమాచారం ఇంకా పూర్తికాలేదు')) {
       rawContentString = book.content;
     } else if (typeof book.text === 'string' && book.text.trim()) {
       rawContentString = book.text;
@@ -336,12 +384,14 @@ export default function Reader({ book, credits, onClose, onDeductCredits, curren
       </header>
 
       {/* Floating Page Counter - Matches Screenshot */}
-      <div className="absolute top-20 right-6 z-40 bg-black/60 backdrop-blur-md text-white text-[11px] font-bold px-3 py-1 rounded-full shadow-lg pointer-events-none">
-        {activePageIndex + 1} / {totalPages}
-      </div>
+      {!pdfUrl && (
+        <div className="absolute top-20 right-6 z-40 bg-black/60 backdrop-blur-md text-white text-[11px] font-bold px-3 py-1 rounded-full shadow-lg pointer-events-none">
+          {activePageIndex + 1} / {totalPages}
+        </div>
+      )}
 
       {/* Sample Mode Golden Banner */}
-      {book.isSampleMode && (
+      {book.isSampleMode && !pdfUrl && (
         <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 px-4 py-2.5 flex flex-col sm:flex-row justify-between items-center text-xs font-bold shadow-md border-b border-orange-600 gap-2 z-10">
           <div className="flex items-center gap-2">
             <span className="text-lg">⚠️</span>
@@ -357,7 +407,7 @@ export default function Reader({ book, credits, onClose, onDeductCredits, curren
 
       {/* Credit / Billing Active Bar */}
       <AnimatePresence>
-        {isReadingSessionActive && (
+        {isReadingSessionActive && !pdfUrl && (
           <motion.div 
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
@@ -381,48 +431,52 @@ export default function Reader({ book, credits, onClose, onDeductCredits, curren
       </AnimatePresence>
 
       {/* Search Bar inside reader */}
-      <div className="px-4 py-2 bg-slate-100/80 border-b border-slate-200 flex items-center gap-2">
-        <Search className="w-4 h-4 text-slate-400" />
-        <input 
-          type="text" 
-          placeholder="Search text within current chapter..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="bg-transparent border-none text-xs w-full focus:outline-none text-slate-700"
-          id="reader-search-input"
-        />
-        {searchQuery && (
-          <button 
-            onClick={() => setSearchQuery('')}
-            className="text-[10px] text-slate-500 hover:text-slate-900"
-            id="reader-search-clear"
-          >
-            Clear
-          </button>
-        )}
-      </div>
+      {!pdfUrl && (
+        <div className="px-4 py-2 bg-slate-100/80 border-b border-slate-200 flex items-center gap-2">
+          <Search className="w-4 h-4 text-slate-400" />
+          <input 
+            type="text" 
+            placeholder="Search text within current chapter..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="bg-transparent border-none text-xs w-full focus:outline-none text-slate-700"
+            id="reader-search-input"
+          />
+          {searchQuery && (
+            <button 
+              onClick={() => setSearchQuery('')}
+              className="text-[10px] text-slate-500 hover:text-slate-900"
+              id="reader-search-clear"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Book overall statistics ribbon */}
-      <div className="bg-amber-100/30 border-b border-amber-200/50 px-4 py-2.5 flex flex-wrap gap-4 items-center justify-between text-[11px] font-sans font-bold text-slate-800">
-        <div className="flex flex-wrap items-center gap-2 text-orange-950">
-          <span className="text-xs">📖 గ్రంథ వివరాలు:</span>
-          <span className="bg-orange-100/80 text-orange-950 px-2.5 py-1 rounded-md border border-orange-200/80 shadow-xs">
-            📝 {getTotalCharacters().toLocaleString()} అక్షరాలు (Letters)
-          </span>
-          <span className="bg-amber-100/80 text-amber-950 px-2.5 py-1 rounded-md border border-amber-200/80 shadow-xs">
-            🔠 {getTotalWords().toLocaleString()} పదాలు (Words)
-          </span>
+      {!pdfUrl && (
+        <div className="bg-amber-100/30 border-b border-amber-200/50 px-4 py-2.5 flex flex-wrap gap-4 items-center justify-between text-[11px] font-sans font-bold text-slate-800">
+          <div className="flex flex-wrap items-center gap-2 text-orange-950">
+            <span className="text-xs">📖 గ్రంథ వివరాలు:</span>
+            <span className="bg-orange-100/80 text-orange-950 px-2.5 py-1 rounded-md border border-orange-200/80 shadow-xs">
+              📝 {getTotalCharacters().toLocaleString()} అక్షరాలు (Letters)
+            </span>
+            <span className="bg-amber-100/80 text-amber-950 px-2.5 py-1 rounded-md border border-amber-200/80 shadow-xs">
+              🔠 {getTotalWords().toLocaleString()} పదాలు (Words)
+            </span>
+          </div>
+          <div className="text-slate-500 font-mono text-[10px] bg-slate-200/60 px-2 py-0.5 rounded border border-slate-300/40">
+            విభాగం: {book.category}
+          </div>
         </div>
-        <div className="text-slate-500 font-mono text-[10px] bg-slate-200/60 px-2 py-0.5 rounded border border-slate-300/40">
-          విభాగం: {book.category}
-        </div>
-      </div>
+      )}
 
       {/* Book Body - Styled as white paper pages */}
-      <div className="flex-1 overflow-y-auto px-2 sm:px-4 py-6 relative scroll-smooth bg-slate-200/40">
-        <div className="max-w-4xl mx-auto space-y-6">
+      <div className={`flex-1 overflow-y-auto relative scroll-smooth ${pdfUrl ? 'py-4 px-2 bg-slate-950/90' : 'px-2 sm:px-4 py-6 bg-slate-200/40'}`}>
+        <div className={`mx-auto ${pdfUrl ? 'w-full h-full' : 'max-w-4xl space-y-6'}`}>
           {/* Main Book Cover Card */}
-          {(book.coverUrl || book.coverImage) && activePageIndex === 0 && (
+          {(book.coverUrl || book.coverImage) && activePageIndex === 0 && !pdfUrl && (
             <div className="bg-white rounded-lg shadow-md overflow-hidden border border-slate-200">
                <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Book Cover</span>
@@ -446,104 +500,153 @@ export default function Reader({ book, credits, onClose, onDeductCredits, curren
             </div>
           )}
 
-          {/* Individual Page View (Matches Screenshot Layout) */}
-          <motion.div 
-            key={`${activeChapterIndex}-${activePageIndex}`}
-            initial={{ rotateY: -30, opacity: 0, transformOrigin: "left center" }}
-            animate={{ rotateY: 0, opacity: 1 }}
-            exit={{ rotateY: 30, opacity: 0 }}
-            transition={{ duration: 0.5, ease: "easeOut" }}
-            className="bg-white rounded shadow-sm border border-slate-200 min-h-[800px] flex flex-col relative overflow-hidden perspective-1000"
-          >
-            {/* Page Internal Header */}
-            <div className="px-8 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-              <div className="flex items-center gap-2">
-                 <FileText className="w-4 h-4 text-slate-400" />
-                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate max-w-[200px]">
-                   {book.title}
-                 </span>
+          {/* Individual Page View or Minimal Native Touch-Scroll PDF Viewer & PDF.js Engine */}
+          {pdfUrl ? (
+            /* Minimal Clean PDF Reader Container - 20% Width Reduced (80% / max-w-4xl), Native Iframe & Canvas Engine */
+            <div 
+              id="minimal-pdf-viewer-root" 
+              className="w-full max-w-[80%] mx-auto h-[calc(100vh-60px)] flex flex-col bg-white rounded-xl shadow-lg border border-slate-300 overflow-hidden"
+            >
+              {/* Minimal PDF Bar: Title, MB size, Page Navigation & Small Download Button */}
+              <div className="px-4 py-2 bg-slate-900 text-white flex items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-semibold text-sm truncate text-slate-100" title={book.title}>
+                    {book.title}
+                  </span>
+                  <span className="text-xs text-slate-400 shrink-0 font-mono bg-slate-800 px-2 py-0.5 rounded">
+                    {book.fileSizeMb ? `${book.fileSizeMb} MB` : 'PDF'}
+                  </span>
+                </div>
+                
+                {/* PDF Page Navigation & Zoom Controls */}
+                <div className="flex items-center gap-2">
+                  {pdfDoc && (
+                    <div className="hidden sm:flex items-center gap-1.5 bg-slate-800 px-2 py-0.5 rounded text-xs font-mono text-slate-300">
+                      <button 
+                        onClick={() => setActivePageIndex(p => Math.max(0, p - 1))}
+                        disabled={activePageIndex === 0}
+                        className="hover:text-white disabled:opacity-30"
+                        title="Previous Page"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                      </button>
+                      <span>{activePageIndex + 1} / {pdfDoc.numPages}</span>
+                      <button 
+                        onClick={() => setActivePageIndex(p => Math.min(pdfDoc.numPages - 1, p + 1))}
+                        disabled={activePageIndex === pdfDoc.numPages - 1}
+                        className="hover:text-white disabled:opacity-30"
+                        title="Next Page"
+                      >
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+
+                  {pdfDoc && (
+                    <div className="hidden sm:flex items-center gap-1 bg-slate-800 px-1.5 py-0.5 rounded text-xs text-slate-300">
+                      <button 
+                        onClick={() => setPdfScale(s => Math.max(0.75, s - 0.15))}
+                        className="hover:text-white p-0.5"
+                        title="Zoom Out"
+                      >
+                        <ZoomOut className="w-3.5 h-3.5" />
+                      </button>
+                      <button 
+                        onClick={() => setPdfScale(s => Math.min(2.5, s + 0.15))}
+                        className="hover:text-white p-0.5"
+                        title="Zoom In"
+                      >
+                        <ZoomIn className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+
+                  <a 
+                    href={pdfUrl} 
+                    download 
+                    className="flex items-center gap-1.5 px-3 py-1 bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold rounded-md shadow-xs transition active:scale-95 shrink-0"
+                    id="pdf-download-btn"
+                    title="Download PDF"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>డౌన్లోడ్</span>
+                  </a>
+                </div>
               </div>
-              <div className="text-[10px] font-bold text-slate-400">
-                PAGE {activePageIndex + 1}
+              
+              {/* Native Iframe & Canvas Rendering Display Container */}
+              <div className="flex-1 w-full h-full relative bg-slate-100 overflow-auto flex flex-col items-center justify-start p-2">
+                {pdfLoading && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 z-20">
+                    <div className="w-8 h-8 border-3 border-sky-500 border-t-transparent rounded-full animate-spin mb-2" />
+                    <span className="text-xs font-semibold text-slate-600">PDF లోడ్ అవుతోంది...</span>
+                  </div>
+                )}
+
+                {/* Robust Native iframe Viewer - Best for AI Studio Preview & Mobile */}
+                <iframe
+                  id="pdf-native-viewer"
+                  src={pdfUrl.includes('#') ? pdfUrl : `${pdfUrl}#toolbar=1&navpanes=0`}
+                  className="w-full h-full min-h-[750px] border-0 rounded bg-white shadow-xs"
+                  title="PDF Viewer"
+                />
+
+                {/* PDF.js Canvas Fallback / High-Definition Page Renderer */}
+                {pdfDoc && (
+                  <div className="mt-4 flex flex-col items-center max-w-full overflow-auto">
+                    <canvas ref={canvasRef} className="shadow-md rounded border border-slate-200 bg-white max-w-full" />
+                  </div>
+                )}
               </div>
             </div>
+          ) : (
+            <motion.div 
+              key={`${activeChapterIndex}-${activePageIndex}`}
+              initial={{ rotateY: -30, opacity: 0, transformOrigin: "left center" }}
+              animate={{ rotateY: 0, opacity: 1 }}
+              exit={{ rotateY: 30, opacity: 0 }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
+              className="bg-white rounded shadow-sm border border-slate-200 min-h-[800px] flex flex-col relative overflow-hidden perspective-1000"
+            >
+              {/* Page Internal Header */}
+              <div className="px-8 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                <div className="flex items-center gap-2">
+                   <FileText className="w-4 h-4 text-slate-400" />
+                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate max-w-[200px]">
+                     {book.title}
+                   </span>
+                </div>
+                <div className="text-[10px] font-bold text-slate-400">
+                  PAGE {activePageIndex + 1}
+                </div>
+              </div>
 
-            {/* Content Area */}
-            <div className="p-8 sm:p-12 flex-1 flex flex-col">
-               {/* Chapter Heading (if page 1) */}
-               {activePageIndex === 0 && !pdfUrl && (
-                  <div className="text-center mb-12">
-                     <h1 className="text-2xl font-serif font-bold text-slate-900 mb-4">
-                        {currentChapter?.title || book.title}
-                     </h1>
-                     <div className="h-0.5 w-16 bg-amber-200 mx-auto" />
-                  </div>
-               )}
+              {/* Content Area */}
+              <div className="p-8 sm:p-12 flex-1 flex flex-col">
+                 {/* Chapter Heading (if page 1) */}
+                 {activePageIndex === 0 && (
+                    <div className="text-center mb-12">
+                       <h1 className="text-2xl font-serif font-bold text-slate-900 mb-4">
+                          {currentChapter?.title || book.title}
+                       </h1>
+                       <div className="h-0.5 w-16 bg-amber-200 mx-auto" />
+                    </div>
+                 )}
 
-               {pdfUrl ? (
-                 <div className="w-full flex-1 flex flex-col items-center select-none bg-slate-50/50 p-4 rounded-2xl border border-slate-100 shadow-inner z-10">
-                   {pdfLoading && (
-                     <div className="flex flex-col items-center justify-center py-20 gap-3">
-                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
-                       <span className="text-xs font-semibold text-slate-500">పుస్తకాన్ని లోడ్ చేస్తున్నాము, దయచేసి వేచి ఉండండి...</span>
-                     </div>
-                   )}
-                   {pdfError && (
-                     <div className="text-center py-16 text-red-500 font-medium">
-                       {pdfError}
-                     </div>
-                   )}
-                   
-                   {!pdfLoading && !pdfError && (
-                     <div className="w-full flex flex-col items-center">
-                       {/* PDF Scale / Zoom Controllers */}
-                       <div className="flex items-center gap-4 mb-4 bg-white/80 backdrop-blur-xs px-3 py-1.5 rounded-full border border-slate-200 shadow-sm shrink-0 z-10">
-                         <button 
-                           onClick={() => setPdfScale(s => Math.max(0.6, s - 0.15))}
-                           disabled={pdfScale <= 0.6}
-                           className="p-1 hover:bg-slate-100 disabled:opacity-30 rounded-full text-slate-600 transition flex items-center justify-center"
-                           title="Zoom Out"
-                         >
-                           <ZoomOut className="w-4 h-4" />
-                         </button>
-                         <span className="text-xs font-mono font-bold text-slate-700 min-w-[40px] text-center">
-                           {Math.round(pdfScale * 100)}%
-                         </span>
-                         <button 
-                           onClick={() => setPdfScale(s => Math.min(2.5, s + 0.15))}
-                           disabled={pdfScale >= 2.5}
-                           className="p-1 hover:bg-slate-100 disabled:opacity-30 rounded-full text-slate-600 transition flex items-center justify-center"
-                           title="Zoom In"
-                         >
-                           <ZoomIn className="w-4 h-4" />
-                         </button>
-                       </div>
-
-                       {/* Canvas PDF Viewer container */}
-                       <div className="w-full overflow-x-auto py-2 flex justify-center bg-white border border-slate-200/60 rounded-xl shadow-xs">
-                         <canvas 
-                           ref={canvasRef} 
-                           className="max-w-full shadow-lg rounded-sm border border-slate-100"
-                         />
-                       </div>
-                     </div>
-                   )}
-                 </div>
-               ) : (
                  <div className="prose prose-slate max-w-none select-text">
                     {activeParagraphs.map((p, i) => renderParagraph(p, i))}
                  </div>
-               )}
-            </div>
+              </div>
 
-            {/* Page Footer */}
-            <div className="px-8 py-4 border-t border-slate-50 text-center text-[10px] font-bold text-slate-300">
-               {activePageIndex + 1}
-            </div>
-          </motion.div>
+              {/* Page Footer */}
+              <div className="px-8 py-4 border-t border-slate-50 text-center text-[10px] font-bold text-slate-300">
+                 {activePageIndex + 1}
+              </div>
+            </motion.div>
+          )}
 
-          {/* Internal Page Pagination */}
-          {(allParagraphsCount > 0 || pdfUrl) && (
+          {/* Internal Page Pagination (Only for text books, NOT for PDF books) */}
+          {(!pdfUrl && allParagraphsCount > 0) && (
             <div className="flex justify-between items-center mt-8 pt-6 border-t border-slate-200/50">
                <button 
                   onClick={() => {
@@ -574,37 +677,39 @@ export default function Reader({ book, credits, onClose, onDeductCredits, curren
       </div>
 
       {/* Reader footer navigation */}
-      <footer className="bg-white border-t border-slate-200 px-4 py-3 flex justify-between items-center z-10">
-        <button
-          disabled={activeChapterIndex === 0}
-          onClick={() => {
-            setActiveChapterIndex(prev => Math.max(0, prev - 1));
-            document.querySelector('.overflow-y-auto')?.scrollTo(0, 0);
-          }}
-          className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition"
-          id="prev-chapter-btn"
-        >
-          <ChevronLeft className="w-4 h-4" />
-          <span>Prev Chapter</span>
-        </button>
+      {!pdfUrl && (
+        <footer className="bg-white border-t border-slate-200 px-4 py-3 flex justify-between items-center z-10">
+          <button
+            disabled={activeChapterIndex === 0}
+            onClick={() => {
+              setActiveChapterIndex(prev => Math.max(0, prev - 1));
+              document.querySelector('.overflow-y-auto')?.scrollTo(0, 0);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition"
+            id="prev-chapter-btn"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            <span>Prev Chapter</span>
+          </button>
 
-        <span className="text-xs font-serif text-slate-500">
-          Chapter {activeChapterIndex + 1} of {book.chapters ? book.chapters.length : 1}
-        </span>
+          <span className="text-xs font-serif text-slate-500">
+            Chapter {activeChapterIndex + 1} of {book.chapters ? book.chapters.length : 1}
+          </span>
 
-        <button
-          disabled={!book.chapters || book.chapters.length === 0 || activeChapterIndex === book.chapters.length - 1}
-          onClick={() => {
-            setActiveChapterIndex(prev => Math.min(book.chapters ? book.chapters.length - 1 : 0, prev + 1));
-            document.querySelector('.overflow-y-auto')?.scrollTo(0, 0);
-          }}
-          className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition"
-          id="next-chapter-btn"
-        >
-          <span>Next Chapter</span>
-          <ChevronRight className="w-4 h-4" />
-        </button>
-      </footer>
+          <button
+            disabled={!book.chapters || book.chapters.length === 0 || activeChapterIndex === book.chapters.length - 1}
+            onClick={() => {
+              setActiveChapterIndex(prev => Math.min(book.chapters ? book.chapters.length - 1 : 0, prev + 1));
+              document.querySelector('.overflow-y-auto')?.scrollTo(0, 0);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition"
+            id="next-chapter-btn"
+          >
+            <span>Next Chapter</span>
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </footer>
+      )}
     </div>
   );
 }

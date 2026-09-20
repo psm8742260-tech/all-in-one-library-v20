@@ -47,6 +47,15 @@ try {
   try {
     db.exec("ALTER TABLE books ADD COLUMN videoUrl TEXT");
   } catch (e) {}
+  try {
+    db.exec("ALTER TABLE books ADD COLUMN pdfUrl TEXT");
+  } catch (e) {}
+  try {
+    db.exec("ALTER TABLE books ADD COLUMN contentType TEXT");
+  } catch (e) {}
+  try {
+    db.exec("ALTER TABLE books ADD COLUMN fileUrl TEXT");
+  } catch (e) {}
 
   // Seed database with initial books if empty
   const rowCountQuery = db.prepare("SELECT COUNT(*) as count FROM books");
@@ -117,13 +126,23 @@ const upload = multer({
   limits: { fileSize: 150 * 1024 * 1024 } // 150MB limit for ultra quality
 });
 
-app.post('/api/upload', upload.single('file'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No file uploaded' });
-  }
-  const fileUrl = `/uploads/${req.file.filename}`;
-  console.log(`[Admin Permanent Storage] Saved: ${req.file.filename}`);
-  res.json({ url: fileUrl, fileName: req.file.originalname });
+app.post('/api/upload', (req, res) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      console.error('[Admin Upload Error]', err);
+      return res.status(400).json({ error: err.message || 'ఫైల్ అప్‌లోడ్ విఫలమైంది' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    const fileUrl = `/uploads/${req.file.filename}`;
+    console.log(`[Admin Permanent Storage] Saved: ${req.file.filename}`);
+    let cleanFileName = req.file.originalname;
+    try {
+      cleanFileName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+    } catch (e) {}
+    res.json({ url: fileUrl, fileName: cleanFileName });
+  });
 });
 
 // Serve the uploads directory statically
@@ -961,8 +980,8 @@ app.post('/api/books', (req, res) => {
 
     if (db) {
       const insertStmt = db.prepare(`
-        INSERT INTO books (id, title, author, description, category, chapters, costToUnlock, costPerMinute, coverUrl, folderId, audioUrl, videoUrl)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO books (id, title, author, description, category, chapters, costToUnlock, costPerMinute, coverUrl, folderId, audioUrl, videoUrl, pdfUrl, contentType, fileUrl)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           title=excluded.title,
           author=excluded.author,
@@ -974,7 +993,10 @@ app.post('/api/books', (req, res) => {
           coverUrl=excluded.coverUrl,
           folderId=excluded.folderId,
           audioUrl=excluded.audioUrl,
-          videoUrl=excluded.videoUrl
+          videoUrl=excluded.videoUrl,
+          pdfUrl=excluded.pdfUrl,
+          contentType=excluded.contentType,
+          fileUrl=excluded.fileUrl
       `);
 
       insertStmt.run(
@@ -989,7 +1011,10 @@ app.post('/api/books', (req, res) => {
         book.coverUrl || '',
         book.folderId || '',
         book.audioUrl || '',
-        book.videoUrl || ''
+        book.videoUrl || '',
+        book.pdfUrl || '',
+        book.contentType || '',
+        book.fileUrl || ''
       );
     } else {
       const idx = inMemoryBooks.findIndex(b => b.id === book.id);

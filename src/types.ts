@@ -16,7 +16,7 @@ export interface User {
   credits: number;
 }
 
-export type ContentType = 'text' | 'audio' | 'video';
+export type ContentType = 'text' | 'audio' | 'video' | 'pdf';
 
 export interface WriterApplication {
   id: string;
@@ -82,6 +82,9 @@ export interface Book {
   pages?: string[];
   costToUnlock: number; // Credit cost to purchase/unlock
   costPerMinute: number; // Cost to read per minute
+  pdfUrl?: string; // Direct uploaded PDF file URL
+  fileUrl?: string; // Uploaded file URL or path
+  url?: string; // Direct URL reference
   isUnlocked?: boolean;
   isSampleMode?: boolean;
   folderId?: string; // Links to hierarchical folder
