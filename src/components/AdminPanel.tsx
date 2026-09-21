@@ -3,9 +3,9 @@ import {
   ShieldCheck, Upload, Trash2, Plus, X, BookOpen, AlertCircle, 
   Check, Lock, Sparkles, FolderPlus, Settings, Users, Bot, Zap, Folder as FolderIcon,
   QrCode, IndianRupee, CheckCircle2, Copy, Mic, Film, Play, Music, Radio, Globe, Youtube,
-  FileText, Loader2
+  FileText, Loader2, Headset, MessageSquare, Phone, Send, Save, Edit3, Mail
 } from 'lucide-react';
-import { Book, Folder, User, LanguageCode, TRANSLATIONS, WriterApplication, ContentType, RegisteredTree } from '../types';
+import { Book, Folder, User, LanguageCode, TRANSLATIONS, WriterApplication, ContentType, RegisteredTree, SupportContact } from '../types';
 import BrahmastraUltraAgent from './BrahmastraUltraAgent';
 
 interface AdminPanelProps {
@@ -60,7 +60,7 @@ export default function AdminPanel({
   const [authError, setAuthError] = useState<string | null>(null);
 
   // Active Tab: default to 'manage' so that the dual-folder UI is immediately visible to the Admin
-  const [activeTab, setActiveTab] = useState<'writers' | 'upload' | 'manage' | 'settings' | 'pricing' | 'brahmastra' | 'trees'>('manage');
+  const [activeTab, setActiveTab] = useState<'writers' | 'upload' | 'manage' | 'settings' | 'pricing' | 'brahmastra' | 'trees' | 'customerCare'>('manage');
 
   // Book / Multimedia Upload Form State
   const [contentType, setContentType] = useState<ContentType>('text');
@@ -96,6 +96,11 @@ export default function AdminPanel({
   const [ytSuccessUrl, setYtSuccessUrl] = useState<string | null>(null);
   const [ytStatusLog, setYtStatusLog] = useState('');
 
+  // Support Contacts (PHRS Database) State
+  const [supportContacts, setSupportContacts] = useState<SupportContact[]>([]);
+  const [editingContactId, setEditingContactId] = useState<string | null>(null);
+  const [tempContact, setTempContact] = useState<Partial<SupportContact>>({});
+
   // Inline editing state for manage books tab
   const [editingBookId, setEditingBookId] = useState<string | null>(null);
   const [editBookTitle, setEditBookTitle] = useState('');
@@ -103,6 +108,68 @@ export default function AdminPanel({
   const [editBookCost, setEditBookCost] = useState<number>(0);
   const [activeManageFolder, setActiveManageFolder] = useState<'general' | 'palm' | 'trash' | null>(null);
   const [isUploadSuccess, setIsUploadSuccess] = useState(false);
+
+  // Load Support Contacts from Database
+  useEffect(() => {
+    if (activeTab === 'customerCare') {
+      const stored = localStorage.getItem('phrs_support_contacts');
+      if (stored) {
+        setSupportContacts(JSON.parse(stored));
+      } else {
+        // Initial Default Data (Only if no data in DB)
+        const defaults: SupportContact[] = [
+          { id: '1', name: 'Admin Support', phone: '8466062260', gmail: 'psm8742260@gmail.com', role: 'Main Admin', order: 1 },
+          { id: '2', name: 'Support Team A', phone: '9876543210', gmail: 'support-a@phrs.com', role: 'General Support', order: 2 }
+        ];
+        setSupportContacts(defaults);
+        localStorage.setItem('phrs_support_contacts', JSON.stringify(defaults));
+      }
+    }
+  }, [activeTab]);
+
+  const saveSupportData = (updated: SupportContact[]) => {
+    setSupportContacts(updated);
+    localStorage.setItem('phrs_support_contacts', JSON.stringify(updated));
+    setNotification('PHRS డేటాబేస్ సేవ్ చేయబడింది! (Database Saved)');
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  const handleEditContact = (contact: SupportContact) => {
+    setEditingContactId(contact.id);
+    setTempContact({ ...contact });
+  };
+
+  const handleSaveContact = () => {
+    if (!editingContactId) return;
+    const updated = supportContacts.map(c => 
+      c.id === editingContactId ? { ...c, ...tempContact } as SupportContact : c
+    );
+    saveSupportData(updated);
+    setEditingContactId(null);
+  };
+
+  const handleDeleteContact = (id: string) => {
+    if (confirm('ఖచ్చితంగా డిలీట్ చేయాలా? (Confirm Delete)')) {
+      const updated = supportContacts.filter(c => c.id !== id);
+      saveSupportData(updated);
+    }
+  };
+
+  const handleAddContact = () => {
+    const newId = Date.now().toString();
+    const newContact: SupportContact = {
+      id: newId,
+      name: 'కొత్త ప్రతినిధి (New Support)',
+      phone: '',
+      gmail: '',
+      role: 'Support Role',
+      order: supportContacts.length + 1
+    };
+    const updated = [...supportContacts, newContact];
+    saveSupportData(updated);
+    setEditingContactId(newId);
+    setTempContact(newContact);
+  };
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Admin Storage: File Upload Logic
@@ -844,7 +911,7 @@ export default function AdminPanel({
           <div className="flex-1 flex flex-col overflow-hidden">
             
             {/* Top Navigation Tabs - Reordered as requested */}
-            <div className="flex border-b border-orange-300 bg-orange-100/70 px-4 pt-2 gap-2 overflow-x-auto scrollbar-none shrink-0">
+            <div className="flex border-b border-orange-300 bg-orange-100/70 px-4 pt-2 gap-2 overflow-x-auto scrollbar-none shrink-0 relative z-20">
               
               {/* TAB 1: WRITER APPLICATIONS (Primary) */}
               <button
@@ -942,6 +1009,20 @@ export default function AdminPanel({
               >
                 <Sparkles className="w-4 h-4 text-emerald-600" />
                 <span>వృక్షాల ఆమోదం (Trees - {registeredTrees.length})</span>
+              </button>
+
+              {/* TAB 8: CUSTOMER CARE & FEEDBACK (Pinpoint Added) */}
+              <button
+                onClick={() => setActiveTab('customerCare')}
+                className={`flex items-center gap-2 px-3.5 py-2 text-xs font-bold rounded-t-xl transition border-b-2 whitespace-nowrap ${
+                  activeTab === 'customerCare'
+                    ? 'border-blue-500 text-blue-600 bg-orange-100/90 shadow-sm'
+                    : 'border-transparent text-slate-700 hover:text-slate-800'
+                }`}
+                id="admin-tab-customer-care"
+              >
+                <Headset className="w-4 h-4 text-blue-600" />
+                <span>కస్టమర్ కేర్ & ఫీడ్‌బ్యాక్ (Customer Care)</span>
               </button>
             </div>
 
@@ -2386,6 +2467,163 @@ export default function AdminPanel({
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* TAB 8 CONTENT: CUSTOMER CARE & FEEDBACK (PHRS Database Integrated) */}
+            {activeTab === 'customerCare' && (
+              <div className="flex-1 overflow-y-auto p-5 space-y-6 bg-slate-50 relative z-10 mt-0.5">
+                <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <Headset className="w-4 h-4 text-blue-600" />
+                      <span>PHRS కస్టమర్ కేర్ మేనేజ్‌మెంట్ (Support Hub)</span>
+                    </h3>
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      ఈ డేటా నేరుగా మన PHRS సర్వర్ డేటాబేస్ లో సేవ్ అవుతుంది.
+                    </p>
+                  </div>
+                  <button 
+                    onClick={handleAddContact}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-[10px] font-bold rounded-lg hover:bg-blue-700 transition shadow-sm"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>కొత్త ప్రతినిధిని చేర్చు (Add New)</span>
+                  </button>
+                </div>
+
+                {/* Support Representatives Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {supportContacts.map((contact) => (
+                    <div key={contact.id} className={`bg-white border ${editingContactId === contact.id ? 'border-blue-500 ring-2 ring-blue-50' : 'border-slate-200'} rounded-2xl p-4 shadow-sm transition-all duration-200`}>
+                      {editingContactId === contact.id ? (
+                        /* Edit Form UI */
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold text-slate-400 uppercase">పేరు (Name)</label>
+                              <input 
+                                type="text" 
+                                value={tempContact.name || ''} 
+                                onChange={e => setTempContact({...tempContact, name: e.target.value})}
+                                className="w-full text-xs p-1.5 border border-slate-200 rounded bg-slate-50 font-bold"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold text-slate-400 uppercase">హోదా (Role)</label>
+                              <input 
+                                type="text" 
+                                value={tempContact.role || ''} 
+                                onChange={e => setTempContact({...tempContact, role: e.target.value})}
+                                className="w-full text-xs p-1.5 border border-slate-200 rounded bg-slate-50 text-blue-600 font-bold"
+                              />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold text-slate-400 uppercase">ఫోన్ (Phone)</label>
+                              <input 
+                                type="text" 
+                                value={tempContact.phone || ''} 
+                                onChange={e => setTempContact({...tempContact, phone: e.target.value})}
+                                className="w-full text-xs p-1.5 border border-slate-200 rounded bg-slate-50 font-mono"
+                                placeholder="8466062260"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold text-slate-400 uppercase">GMAIL (Email)</label>
+                              <input 
+                                type="text" 
+                                value={tempContact.gmail || ''} 
+                                onChange={e => setTempContact({...tempContact, gmail: e.target.value})}
+                                className="w-full text-xs p-1.5 border border-slate-200 rounded bg-slate-50 font-mono"
+                                placeholder="name@gmail.com"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex gap-2 pt-2 border-t border-slate-100">
+                            <button 
+                              onClick={handleSaveContact}
+                              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-green-600 text-white text-[10px] font-bold rounded-lg hover:bg-green-700"
+                            >
+                              <Save className="w-3.5 h-3.5" /> సేవ్ (Save)
+                            </button>
+                            <button 
+                              onClick={() => setEditingContactId(null)}
+                              className="flex-1 py-1.5 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-lg hover:bg-slate-200"
+                            >
+                              రద్దు (Cancel)
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        /* Display Card UI */
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center text-blue-500 shrink-0 border border-blue-100 shadow-inner">
+                            <Users className="w-6 h-6" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between">
+                              <h5 className="text-xs font-bold text-slate-900">{contact.name}</h5>
+                              <div className="flex gap-1">
+                                <button 
+                                  onClick={() => handleEditContact(contact)}
+                                  className="p-1 text-slate-400 hover:text-blue-600 transition"
+                                  title="Edit"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                </button>
+                                <button 
+                                  onClick={() => handleDeleteContact(contact.id)}
+                                  className="p-1 text-slate-400 hover:text-red-600 transition"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                            <p className="text-[9px] text-blue-600 font-bold uppercase tracking-tighter">{contact.role}</p>
+                            
+                            <div className="flex items-center gap-3 mt-2">
+                              <div className="flex items-center gap-1.5">
+                                <a href={`tel:${contact.phone}`} className="p-1.5 bg-green-50 text-green-600 rounded-lg border border-green-100 hover:bg-green-100 transition shadow-sm">
+                                  <Phone className="w-3 h-3" />
+                                </a>
+                                <a href={`https://wa.me/91${contact.phone}`} target="_blank" className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg border border-emerald-100 hover:bg-emerald-100 transition shadow-sm">
+                                  <MessageSquare className="w-3 h-3" />
+                                </a>
+                                <span className="text-[10px] font-mono font-bold text-slate-600">{contact.phone}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 border-l border-slate-100 pl-3">
+                                <a href={`mailto:${contact.gmail}`} className="p-1.5 bg-blue-50 text-blue-600 rounded-lg border border-blue-100 hover:bg-blue-100 transition shadow-sm">
+                                  <Mail className="w-3 h-3" />
+                                </a>
+                                <span className="text-[10px] font-mono font-bold text-slate-600 break-all" title={contact.gmail}>
+                                  {contact.gmail || 'No Email'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Feedback Section */}
+                <div className="bg-orange-50 border border-orange-200 rounded-2xl p-5 space-y-4 shadow-sm">
+                  <div className="flex items-center gap-2 border-b border-orange-100 pb-2">
+                    <MessageSquare className="w-4 h-4 text-orange-600" />
+                    <h4 className="text-xs font-bold text-slate-900">PHRS కస్టమర్ ఫీడ్‌బ్యాక్ (User Feedback)</h4>
+                  </div>
+                  
+                  <div className="bg-white/80 border border-orange-100 rounded-xl p-6 text-center space-y-2">
+                    <Send className="w-8 h-8 text-orange-200 mx-auto" />
+                    <p className="text-[10px] text-slate-500 font-medium leading-relaxed px-2">
+                      వినియోగదారులు పంపే సందేశాలు నేరుగా మన సర్వర్ డేటాబేస్ నుండి ఇక్కడ రియల్ టైమ్ లో కనిపిస్తాయి.
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
 

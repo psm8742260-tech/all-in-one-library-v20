@@ -35,6 +35,15 @@ export interface WriterApplication {
   timestamp: string;
 }
 
+export interface SupportContact {
+  id: string;
+  name: string;
+  phone: string;
+  gmail: string;
+  role: string;
+  order: number;
+}
+
 export interface RegisteredTree {
   id: string;
   treeName: string;

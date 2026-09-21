@@ -3,8 +3,13 @@ import path from 'path';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import multer from 'multer';
+import https from 'https';
+import axios from 'axios';
+import { createRequire } from 'module';
 import { GoogleGenAI, Type } from '@google/genai';
 import { INITIAL_BOOKS } from './src/data/books.ts';
+
+const require = createRequire(path.join(process.cwd(), 'server.ts'));
 
 dotenv.config();
 
@@ -105,7 +110,7 @@ app.get('/api/app-control', (req, res) => {
 });
 
 // Admin Storage: Permanent File Upload System
-const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads');
+const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
@@ -145,8 +150,72 @@ app.post('/api/upload', (req, res) => {
   });
 });
 
-// Serve the uploads directory statically
+// SILENT INTERCEPTOR: Bridge for background Link Picking & Saving
+app.post('/api/silent-save', express.json(), async (req, res) => {
+  const { url, title } = req.body;
+  if (!url) return res.status(400).json({ error: 'URL is required' });
+
+  try {
+    const bookTitle = title || 'Auto Picked Book';
+    const fileName = `picked_${Date.now()}_${bookTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
+    const filePath = path.join(UPLOAD_DIR, fileName);
+
+    // Silent Background Download with Axios (handles redirects)
+    axios({
+      method: 'get',
+      url: url,
+      responseType: 'stream'
+    }).then((response) => {
+      const fileStream = fs.createWriteStream(filePath);
+      response.data.pipe(fileStream);
+      fileStream.on('finish', () => {
+        fileStream.close();
+        console.log(`[Silent Interceptor] Successfully Picked & Saved: ${fileName}`);
+        
+        // Register in SQLite Database
+        if (db) {
+          try {
+            const bookId = `picked_${Date.now()}`;
+            const fileUrl = `/uploads/${fileName}`;
+            const insertStmt = db.prepare(`
+              INSERT INTO books (id, title, author, description, category, chapters, costToUnlock, costPerMinute, coverUrl, folderId, pdfUrl, contentType, fileUrl)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+            insertStmt.run(
+              bookId,
+              bookTitle,
+              'International Library',
+              `Automatically saved from: ${url}`,
+              'General Books',
+              JSON.stringify([{ id: '1', title: 'Full Book', content: 'See PDF' }]),
+              0,
+              0,
+              'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&q=80&w=800',
+              'fol-general',
+              fileUrl,
+              'pdf',
+              fileUrl
+            );
+            console.log(`[Silent Interceptor] Registered in Library Database: ${bookId}`);
+          } catch (dbErr) {
+            console.error('[Silent Interceptor DB Error]', dbErr);
+          }
+        }
+      });
+    }).catch((err) => {
+      console.error('[Silent Interceptor Error]', err.message);
+    });
+
+    res.json({ status: 'intercepted', message: 'Silent pick-up initiated' });
+  } catch (error) {
+    console.error('[Silent Save Error]', error);
+    res.status(500).json({ error: 'Internal interception failure' });
+  }
+});
+
+// Serve the uploads directory statically (Hybrid Model)
 app.use('/uploads', express.static(UPLOAD_DIR));
+app.use('/uploads', express.static(path.join(process.cwd(), 'public', 'uploads')));
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
@@ -312,184 +381,6 @@ Example Format:
   ];
 }
 
-
-// Endpoint: Direct Bridge Proxy Gateway with Local AI Caching Fallback
-app.post('/api/fetch-secure-book', async (req, res) => {
-  try {
-    const { title, id } = req.body;
-    
-    // Direct Bridge Proxy Gateway Configuration
-    const CONFIG = {
-      API_ENDPOINT: "https://phrscrowd.online/api/fetch-secure-book",
-      GATEWAY_TOKEN: "NjYwNi40way=" // Base64 Secure Token
-    };
-    
-    const decodedToken = Buffer.from(CONFIG.GATEWAY_TOKEN, 'base64').toString('utf8');
-    
-    let bookData: any = null;
-
-    try {
-      // SMART AGENT LOGIC: Check Local Library First
-      if (db) {
-        const localCheck = db.prepare("SELECT * FROM books WHERE title = ? OR id = ?").get(title, id) as any;
-        if (localCheck && localCheck.chapters && JSON.parse(localCheck.chapters).length > 0) {
-          console.log(`[Smart Agent] Found "${title}" in local library. Serving directly.`);
-          localCheck.chapters = JSON.parse(localCheck.chapters);
-          return res.json({ success: true, book: localCheck });
-        }
-      }
-
-      // If not in local, fetch from International Library Bridge
-      const response = await fetch(CONFIG.API_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${decodedToken.replace(/[\u0000-\u001F\u007F-\uFFFF]/g, "")}`
-        },
-        body: JSON.stringify({ title, id, fullAccess: true })
-      });
-
-      if (response.ok) {
-        bookData = await response.json();
-        if (bookData && bookData.book) {
-          const fetchedBook = bookData.book;
-          
-          // SMART AUTO-SAVE: Save fetched book to local library immediately
-          if (db) {
-            try {
-              const insertStmt = db.prepare(`
-                INSERT INTO books (id, title, author, description, category, chapters, costToUnlock, costPerMinute, coverUrl, folderId, audioUrl, videoUrl)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET 
-                  chapters=excluded.chapters,
-                  folderId=COALESCE(books.folderId, excluded.folderId)
-              `);
-              insertStmt.run(
-                fetchedBook.id,
-                fetchedBook.title,
-                fetchedBook.author,
-                fetchedBook.description || '',
-                fetchedBook.category || 'General Books',
-                JSON.stringify(fetchedBook.chapters || []),
-                fetchedBook.costToUnlock || 20,
-                fetchedBook.costPerMinute || 1,
-                fetchedBook.coverUrl || '',
-                fetchedBook.folderId || 'fol-general',
-                fetchedBook.audioUrl || '',
-                fetchedBook.videoUrl || ''
-              );
-              console.log(`[Smart Agent] Permanently saved "${fetchedBook.title}" to local general library.`);
-            } catch (saveErr) {
-              console.error("[Smart Agent] Failed to auto-save fetched book:", saveErr);
-            }
-          }
-          
-          return res.json({ success: true, book: fetchedBook });
-        }
-      }
-    } catch (err) {
-      console.error("Direct Gateway connection failed:", err);
-    }
-
-    // Local Fallback only if Bridge is completely down
-    console.log(`[Local Fallback] Bridge unavailable. Generating local chapters for: "${title}"`);
-    
-    // Look up book metadata locally
-    let bookMeta: any = null;
-    if (db) {
-      try {
-        const stmt = db.prepare("SELECT * FROM books WHERE title = ?");
-        bookMeta = stmt.get(title) as any;
-      } catch (dbErr) {
-        console.warn("Local DB lookup failed in fetch-secure-book", dbErr);
-      }
-    }
-    
-    if (!bookMeta) {
-      bookMeta = inMemoryBooks.find(b => b.title === title || b.title.includes(title));
-    }
-
-    const author = bookMeta?.author || "ప్రాచీన సిద్ధులు / ఋషులు";
-    const description = bookMeta?.description || `ప్రాచీన తాళపత్ర గ్రంథాల నుండి సేకరించబడిన అరుదైన మరియు నిగూఢమైన రహస్యాలు. ${title} గ్రంథం.`;
-
-    // Generate pages using our highly optimized AI generator
-    const pages = await generateOriginalBookPages(title, author, description);
-    
-    const chapters = pages.map((pageText, index) => {
-      const lines = pageText.split('\n');
-      const firstLine = lines[0]?.trim() || '';
-      const chapterTitle = firstLine.startsWith('అధ్యాయం') || firstLine.startsWith('శీర్షిక')
-        ? firstLine
-        : `పత్రం ${index + 1} (తాళపత్ర అధ్యాయం ${index + 1})`;
-      const content = lines.slice(1).join('\n').trim() || pageText;
-
-      return {
-        id: `${bookMeta?.id || 'book'}-gen-ch-${index + 1}`,
-        title: chapterTitle,
-        content: content
-      };
-    });
-
-    const updatedBook = {
-      id: bookMeta?.id || `palm-${Math.random().toString(36).substring(2, 9)}`,
-      title,
-      author,
-      description,
-      category: bookMeta?.category || "తాళపత్ర గ్రంథాలు",
-      chapters: chapters,
-      costToUnlock: bookMeta?.costToUnlock || 20,
-      costPerMinute: bookMeta?.costPerMinute || 1,
-      coverUrl: bookMeta?.coverUrl || "",
-      folderId: bookMeta?.folderId || "fol-talapatra"
-    };
-
-    // Save permanently in database/memory so it caches
-    if (db) {
-      try {
-        const insertStmt = db.prepare(`
-          INSERT INTO books (id, title, author, description, category, chapters, costToUnlock, costPerMinute, coverUrl, folderId)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(id) DO UPDATE SET chapters=excluded.chapters
-        `);
-        insertStmt.run(
-          updatedBook.id,
-          updatedBook.title,
-          updatedBook.author,
-          updatedBook.description,
-          updatedBook.category,
-          JSON.stringify(updatedBook.chapters),
-          updatedBook.costToUnlock,
-          updatedBook.costPerMinute,
-          updatedBook.coverUrl,
-          updatedBook.folderId
-        );
-        console.log(`Successfully saved generated chapters to DB for "${title}"`);
-      } catch (dbSaveErr) {
-        console.error("Failed to save generated book to local SQLite DB:", dbSaveErr);
-      }
-    } else {
-      const idx = inMemoryBooks.findIndex(b => b.id === updatedBook.id);
-      if (idx >= 0) {
-        inMemoryBooks[idx] = { ...inMemoryBooks[idx], chapters: updatedBook.chapters };
-      }
-    }
-
-    return res.json({
-      success: true,
-      book: updatedBook
-    });
-
-    // Mirroring data directly back to reader if gateway succeeded
-    res.json({ success: true, ...bookData });
-
-  } catch (error) {
-    console.error("Direct Bridge Proxy Gateway & Fallback Error:", error);
-    res.status(500).json({ 
-      success: false, 
-      message: "Secure library connection could not be established." 
-    });
-  }
-});
 
 
 // Endpoint: Test API Key Connection (Online/Offline Status Check)
@@ -971,7 +862,7 @@ app.get('/api/books', (req, res) => {
 });
 
 // Endpoint: Insert/Update book in SQLite (with memory fallback)
-app.post('/api/books', (req, res) => {
+app.post('/api/books', async (req, res) => {
   try {
     const book = req.body;
     if (!book.id || !book.title || !book.author) {
@@ -998,6 +889,15 @@ app.post('/api/books', (req, res) => {
           contentType=excluded.contentType,
           fileUrl=excluded.fileUrl
       `);
+
+      // Pinpoint: Redirect to Central Server SQL
+      try {
+        await fetch(`${CENTRAL_SERVER}/api/library/save-permanent`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(book)
+        });
+      } catch (e) { console.error("Central Save Error", e); }
 
       insertStmt.run(
         book.id,

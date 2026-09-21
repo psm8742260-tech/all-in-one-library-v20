@@ -62,29 +62,6 @@ export default function LibraryGateway({ onClose, onBookSaved, localBooks }: Lib
     setShowBrowser(true);
   };
 
-  const handleSimulateDownloadAndSave = () => {
-    // STEP 4 & 5: Payment & Dual Download/Auto-save
-    setIsProcessing(true);
-    
-    // Simulating the cycle as described by Admin
-    setTimeout(() => {
-      const newBook = {
-        title: searchQuery || 'New International Discovery',
-        author: 'International Author',
-        description: `Downloaded via Smart Gateway from ${currentUrl}`,
-        category: 'General',
-        isUnlocked: true,
-        coverUrl: 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?auto=format&fit=crop&q=80&w=800'
-      };
-
-      if (onBookSaved) onBookSaved(newBook);
-      alert("✅ పేమెంట్ సక్సెస్! బుక్ మీ ఫోన్లోకి మరియు మన లైబ్రరీలోకి పర్మినెంట్గా సేవ్ అయింది.");
-      
-      // STEP 6: Return to Chat
-      setIsProcessing(false);
-      if (onClose) onClose();
-    }, 2000);
-  };
 
   if (showBrowser) {
     return (
@@ -116,29 +93,8 @@ export default function LibraryGateway({ onClose, onBookSaved, localBooks }: Lib
               src={currentUrl} 
               className="w-full h-full border-none"
               title="International Library Browser"
-              sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+              sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads"
             />
-            
-            {/* ACTION FLOATER FOR DUAL DOWNLOAD & SAVE */}
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-full max-w-md px-4">
-              <button 
-                onClick={handleSimulateDownloadAndSave}
-                disabled={isProcessing}
-                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-4 rounded-2xl font-black text-sm shadow-2xl transition-all active:scale-95 flex items-center justify-center gap-3 border-4 border-white/20 backdrop-blur-sm disabled:opacity-50"
-              >
-                {isProcessing ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>ప్రోసెస్ అవుతోంది (Processing...)</span>
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-5 h-5" />
-                    <span>పేమెంట్ చేసి డౌన్లోడ్ & లైబ్రరీకి సేవ్ చెయ్</span>
-                  </>
-                )}
-              </button>
-            </div>
           </div>
       </div>
     );

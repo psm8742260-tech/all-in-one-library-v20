@@ -1,6 +1,81 @@
 # Changelog
 
+## [2026-09-21 - Update 43]
+### Fixed (UI Overlap & Text Truncation)
+- **Header Correction**:
+  - **File**: `/src/components/AdminPanel.tsx` (Lines 914, 2475)
+  - **Change**: Added `relative z-20` to the tab bar and `mt-0.5 relative z-10` to the Customer Care content container to prevent header overlap.
+- **Text Visibility**:
+  - **File**: `/src/components/AdminPanel.tsx` (Lines 2601-2603)
+  - **Change**: Removed Gmail truncation and `max-width`. Replaced with `break-all` and `font-bold` for full visibility.
+  - **Status**: Fixed.
+
+## [2026-09-21 - Update 42]
+### Fixed (Customer Care UI Overflows)
+- **Visual Precision**:
+  - **File**: `/src/components/AdminPanel.tsx` (Lines 2601, 2620-2623)
+  - **Change**: Increased Gmail `max-width` from 100px to 150px. Reduced feedback box padding from `p-8` to `p-6`. Resized `Send` icon to `w-8 h-8`. Added `leading-relaxed` and `px-2` to feedback description.
+  - **Reason**: To prevent text truncation and ensure all content stays perfectly inside the boxes on mobile screens.
+  - **Status**: Fixed.
+
+## [2026-09-21 - Update 41]
+### Fixed (Missing Imports)
+- **Import Resolution**:
+  - **File**: `/src/components/AdminPanel.tsx` (Lines 6-8)
+  - **Change**: Added missing `SupportContact` type from `../types` and `Save`, `Edit3`, `Mail` icons from `lucide-react`.
+  - **Status**: Fixed.
+
+## [2026-09-21 - Update 40]
+### Fixed (ReferenceError: activeTab)
+- **Temporal Dead Zone Fix**:
+  - **File**: `/src/components/AdminPanel.tsx` (Lines 48-108 moved to Line 172)
+  - **Change**: Moved the support contact `useEffect` and its associated handler functions below all `useState` declarations.
+  - **Reason**: `activeTab` and other state variables were being accessed inside the `useEffect` before their lexical declaration, causing a `ReferenceError`.
+  - **Status**: Fixed.
+
+## [2026-09-21 - Update 39]
+### Added (PHRS Support CRUD Hub)
+- **Database Integration**:
+  - **File**: `/src/components/AdminPanel.tsx` (Lines 48-110, 2474-2628)
+  - **File**: `/src/types.ts` (Lines 38-46)
+  - **Change**: Implemented full CRUD (Create, Read, Update, Delete) for Customer Care representatives using the PHRS (Firestore) database.
+  - **Features**: Added editable fields for Name, Role, Phone, and **Gmail**. Integrated direct Call, WhatsApp, and Email links.
+  - **Security**: Restricted management access exclusively to the Admin Panel.
+  - **Icons**: Added `Mail`, `Edit3`, and `Save` icons.
+
+## [2026-09-21 - Update 38]
+### Added (Customer Care & Feedback)
+- **Admin Panel Extension**:
+  - **File**: `/src/components/AdminPanel.tsx` (Lines 946-960, 2406-2465)
+  - **Change**: Added a "కస్టమర్ కేర్ & ఫీడ్‌బ్యాక్" (Customer Care) tab with 5 support contacts (Phone & WhatsApp) and a feedback log.
+  - **Security**: The tab is strictly accessible within the Admin Panel interface.
+  - **Icons**: Integrated `Headset`, `MessageSquare`, `Phone`, and `Send` icons from `lucide-react`.
+
+## [2026-09-21 - Update 37]
+### Fixed (Build Failure)
+- **Async Fix**:
+  - **File**: `/server.ts` (Line 865)
+  - **Change**: Added `async` keyword to the `/api/books` POST handler to resolve build error caused by `await` usage.
+  - **Status**: Build Succeeded.
+
+### Added (System Bridge)
+- **Central Server SQL Integration**:
+  - **File**: `/server.ts` (Line 893)
+  - **Change**: Added a pinpoint SDK bridge to sync local book uploads with the central server at `phrscrowd.online`.
+  - **Verification**: Database connectivity enabled for permanent storage.
+
+
 All notable changes to this project will be documented in this file.
+
+## [2026-09-21 - Update 36]
+### Removed (Pinpoint Removal)
+- **Foxy Proxy Gateway Removal**: 
+  - **File**: `/server.ts` (Lines 386-561)
+  - **Change**: Deleted the entire `/api/fetch-secure-book` proxy endpoint to restore direct international library access.
+- **Green Board (Action Floater) Removal**:
+  - **File**: `/src/components/LibraryGateway.tsx` (Lines 65-87, 123-141)
+  - **Change**: Removed the "Download & Save" floating button and its corresponding handler logic to clear the UI for original website buttons.
+- **Verification**: Admin requested these removals to fix visibility of original downloading buttons in the international library.
 
 ## [2026-09-20 - Update 35]
 ### Final Cleanup & GitHub Readiness (Pass)
@@ -231,6 +306,19 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - **Cover Image Mapping**: Corrected metadata assignment to ensure uploaded images are correctly displayed as book covers in the General Library.
 - **Maintenance**: Performed 50-second deep scan of system rules and code health.
+
+## [2026-09-20 - Update 3]
+### Fixed
+- **Permanent Storage Migration**: Migrated the `UPLOAD_DIR` in `server.ts` from ephemeral `/public/uploads/` to permanent root `/uploads/` to prevent file loss. (Line 108)
+- **Routing Fix**: Optimized static routing for `/uploads` in `server.ts` to prevent SPA (App) fallback/redirection when PDFs are accessed. (Line 149)
+- **Hybrid Storage Model**: Implemented a dual-routing system in `server.ts` to support both the new permanent `/uploads/` folder and the legacy `/public/uploads/` folder simultaneously. (Line 149-150)
+- **Silent Interceptor (Link Picker)**: Implemented background link detection and auto-saving in `LibraryGateway.tsx` and `server.ts`. (Line 65-150)
+- **UI De-clutter**: Permanently removed the "Action Floater" (Green Board) UI from `LibraryGateway.tsx` for a seamless experience.
+- **SQLite ESM Fix**: Fixed `require is not defined` error in `server.ts` by defining `require` using `createRequire` with an absolute path (`process.cwd()`) to ensure compatibility with both ES modules (development) and bundled CommonJS (production). (Line 8-12)
+- **Feature Revert**: Reverted the "Silent Interceptor" background picking logic and fully restored the "Green Board" (Action Floater / "డౌన్లోడ్ & లైబ్రరీకి సేవ్ చెయ్") UI button in `LibraryGateway.tsx` due to browser iframe constraints that prevent reliable background URL interception on external websites.
+- **Restart Tracker Restoration**: Reconstructed `/RESTART_TRACKER.md` and restored Rules 11 and 12 in `AGENTS.md` (re-enabling double-layer fallback and rollback checks) as authorized by Admin Garu with password 6606.
+- **Double Safety Rules**: Unified both Google AI Studio's native Checkpoint mechanism (🚩) as Rule 13 and our internal Restart Tracker as Rules 9, 11, and 12 for the absolute highest security and backup standards.
+- **Admin Authorization**: Verified by Admin Garu with password 6606.
 
 ## [2026-09-18 - Update 2]
 ### Added
