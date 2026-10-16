@@ -1,12 +1,12 @@
 // Progressive Web App (PWA) Production Service Worker
 // Provides offline capability, fast asset loading, and mobile installability
 
-const CACHE_NAME = 'aili-pwa-v3';
+const CACHE_NAME = 'aili-pwa-v4';
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/app_logo_icon_1787974156637.jpg'
+  './',
+  './index.html',
+  './manifest.json',
+  './app_icon.png'
 ];
 
 // Service Worker Installation: Pre-caches critical shell assets
@@ -65,7 +65,7 @@ self.addEventListener('fetch', (event) => {
             return cachedResponse;
           }
           if (request.mode === 'navigate') {
-            return caches.match('/');
+            return caches.match('./index.html');
           }
         });
       })

@@ -1,5 +1,27 @@
 # Changelog
 
+## [2026-10-16 - Update 44]
+### Added & Configured (Subdomain Deployment & CI/CD Automation)
+- **Subdomain Path Alignment (`aiol.phrscrowd.online`)**:
+  - **File**: `/vite.config.ts` (Line 8)
+  - **Change**: Added `base: './'` so that Vite outputs relative asset paths.
+  - **File**: `/index.html` (Lines 15, 17, 21, 26)
+  - **Change**: Updated `<link rel="manifest">`, `<link rel="apple-touch-icon">`, and `navigator.serviceWorker.register` to use relative paths (`./`).
+  - **File**: `/public/manifest.json` (Lines 2, 6, 13, 19, 25, 34, 41)
+  - **Change**: Updated `id`, `start_url`, and icon URLs to relative paths (`./app_icon.png`).
+  - **File**: `/public/sw.js` (Lines 4-10, 68)
+  - **Change**: Updated `CACHE_NAME` to `aili-pwa-v4`, updated `STATIC_ASSETS` to relative paths (`./`, `./index.html`, `./manifest.json`, `./app_icon.png`), and updated offline fallback to `./index.html`.
+- **Packaging**:
+  - **Archive**: `/aiol_phrscrowd_online.zip` (1.98 MB)
+  - **Structure**: All production build files (`index.html`, `assets/`, `manifest.json`, `sw.js`, `app_icon.png`, etc.) directly at the root of the archive without any parent folder wrapper.
+- **Automated CI/CD Workflows**:
+  - **File**: `/.github/workflows/deploy.yml`
+  - **Change**: Created GitHub Actions automated deployment workflow to build and deploy to cPanel `/public_html/aiol.phrscrowd.online` on git push.
+  - **File**: `/.cpanel.yml`
+  - **Change**: Configured cPanel Git™ Version Control automated deployment script.
+  - **File**: `/scripts/deploy.js` & `/package.json`
+  - **Change**: Implemented Node.js FTP/SFTP deployment automation (`npm run deploy`) with `basic-ftp`.
+
 ## [2026-09-21 - Update 43]
 ### Fixed (UI Overlap & Text Truncation)
 - **Header Correction**:
