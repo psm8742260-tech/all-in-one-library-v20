@@ -1252,6 +1252,16 @@ app.get('/api/codebase-pdf', (req, res) => {
   res.send(html);
 });
 
+// Download cPanel deployment zip endpoint
+app.get('/api/download-cpanel-zip', (req, res) => {
+  const zipPath = path.join(process.cwd(), 'public_html_deploy.zip');
+  if (fs.existsSync(zipPath)) {
+    res.download(zipPath, 'public_html_deploy.zip');
+  } else {
+    res.status(404).send('ZIP file not found');
+  }
+});
+
 // Setup Vite Dev Server / Static Asset pipeline
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {

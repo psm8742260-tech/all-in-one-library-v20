@@ -17,3 +17,5 @@
 - Restored and connected TWA Web App System with Hybrid Engine in `src/version.ts` and `src/components/BrahmastraUltraAgent.tsx`.
 - Integrated automatic Service Worker update detection (`src/main.tsx`) and dynamic cache (`public/sw.js`) to ensure all edits instantly reflect in installed mobile PWA/TWA applications.
 - Configured direct FTP server, username, and password credentials in `.github/workflows/deploy.yml` to resolve GitHub Actions deployment action failures.
+- Generated `public_html_deploy.zip` containing the complete production build (`dist/`) for direct manual upload to cPanel `public_html/`.
+- Added `/api/download-cpanel-zip` endpoint in `server.ts` to allow direct browser download of `public_html_deploy.zip`.
