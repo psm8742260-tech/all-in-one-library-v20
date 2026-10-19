@@ -17,6 +17,7 @@ import LibraryModal, { CATEGORIES, ALL_INDIA_LANGUAGES } from './LibraryModal';
 import WriterRegistrationModal from './WriterRegistrationModal';
 import PaymentModal from './PaymentModal';
 import LibraryGateway from './LibraryGateway';
+import { HYBRID_ENGINE_MODE } from '../version';
 // @ts-ignore
 import appLogoImg from '../assets/images/app_logo_icon_1787974156637.jpg';
 
@@ -78,6 +79,38 @@ export default function Dashboard({
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showLangMenu, setShowLangMenu] = useState(false);
+  
+  // Hybrid Engine 5-Color Blinking 'H' State
+  const [hybridColorIndex, setHybridColorIndex] = useState(0);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  const isHybridEngineWorking = isOnline && HYBRID_ENGINE_MODE === 'UNIFORM_HYBRID_ACTIVE';
+  const hybridColors = [
+    'bg-red-500 text-white shadow-red-500/50',
+    'bg-blue-500 text-white shadow-blue-500/50',
+    'bg-emerald-500 text-white shadow-emerald-500/50',
+    'bg-amber-500 text-slate-900 shadow-amber-500/50',
+    'bg-purple-500 text-white shadow-purple-500/50'
+  ];
+
+  useEffect(() => {
+    if (!isHybridEngineWorking) return;
+    const interval = setInterval(() => {
+      setHybridColorIndex(prev => (prev + 1) % 5);
+    }, 800);
+    return () => clearInterval(interval);
+  }, [isHybridEngineWorking]);
   
   // Chat state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -838,8 +871,8 @@ Downloaded from All In One Library Hub
   return (
     <div className="flex flex-col h-screen bg-orange-50 text-slate-900 font-sans overflow-hidden">
       
-      {/* Top Application Header */}
-      <header className="bg-orange-50 border-b border-orange-300 px-3 sm:px-4 py-2.5 flex items-center justify-between z-30 shadow-lg gap-2">
+      {/* Top Application Header (Height increased by 20%) */}
+      <header className="bg-orange-50 border-b border-orange-300 px-3 sm:px-4 py-[15px] flex items-center justify-between z-30 shadow-lg gap-2">
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <button 
             onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -862,6 +895,18 @@ Downloaded from All In One Library Hub
             <div className="hidden md:block">
               <h1 className="text-sm font-serif font-bold text-slate-900 tracking-wide">{t.title}</h1>
               <span className="text-[9px] text-slate-700 font-mono tracking-widest block uppercase font-semibold">ALL IN ONE LIBRARY</span>
+            </div>
+
+            {/* Hybrid Engine 5-Color Blinking 'H' Indicator */}
+            <div 
+              className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono font-bold text-xs shadow-md transition-all duration-300 ml-2 shrink-0 ${
+                isHybridEngineWorking 
+                  ? hybridColors[hybridColorIndex] + ' animate-pulse' 
+                  : 'bg-gray-300 text-gray-500 opacity-70'
+              }`}
+              title={isHybridEngineWorking ? "Hybrid Engine Active (5-Color Blinking Mode)" : "Hybrid Engine Inactive / Stopped"}
+            >
+              H
             </div>
           </div>
         </div>

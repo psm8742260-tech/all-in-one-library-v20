@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Book, LanguageCode, TRANSLATIONS } from '../types';
 import * as pdfjsLib from 'pdfjs-dist';
+import { PDF_VERSION } from '../version';
 
 // Configure PDF.js worker path utilizing local worker for standard offline execution
 if (typeof (Promise as any).try !== 'function') {
@@ -111,7 +112,7 @@ export default function Reader({ book, credits, onClose, onDeductCredits, curren
     let isMounted = true;
     const loadingTask = pdfjsLib.getDocument({
       url: pdfUrl,
-      cMapUrl: 'https://unpkg.com/pdfjs-dist@' + pdfjsLib.version + '/cmaps/',
+      cMapUrl: 'https://unpkg.com/pdfjs-dist@' + PDF_VERSION + '/cmaps/',
       cMapPacked: true,
     });
 

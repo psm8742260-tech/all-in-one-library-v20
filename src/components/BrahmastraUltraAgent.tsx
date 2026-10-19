@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { getHybridVersion } from '../lib/hybridEngine';
+import { HYBRID_VERSION } from '../version';
 import { 
   Bot, Play, CheckCircle2, Sparkles, Layers, ArrowLeft, Terminal, 
   Send, Cpu, RefreshCw, Key, ShieldCheck, Zap, Code2, Bug, Palette, FileArchive, HardDrive, Eye, Lock
@@ -15,12 +17,12 @@ export const BrahmastraUltraAgent: React.FC<Props> = ({ onSelectAgentForPrompt, 
   const [activeCapability, setActiveCapability] = useState<string>('all-inclusive');
   const [agentStatus, setAgentStatus] = useState<'ACTIVE' | 'PROCESSING' | 'READY'>('ACTIVE');
   const [totalOperations, setTotalOperations] = useState<number>(489);
-  const [lastAction, setLastAction] = useState<string>('Brahmastra 3.5 Unified Core loaded with 10 built-in execution engines.');
+  const [lastAction, setLastAction] = useState<string>(`Brahmastra ${HYBRID_VERSION} Unified Core loaded with 10 built-in execution engines.`);
 
   // DeepSeek interactive terminal state
   const [promptInput, setPromptInput] = useState('');
   const [terminalOutput, setTerminalOutput] = useState<string>(
-    '⚡ బ్రహ్మాస్త్ర 3.5 ఆల్-ఇన్-వన్ అల్ట్రా ఏజెంట్ సిద్ధంగా ఉంది.\n' +
+    '⚡ బ్రహ్మాస్త్ర ' + HYBRID_VERSION + ' ఆల్-ఇన్-వన్ అల్ట్రా ఏజెంట్ సిద్ధంగా ఉంది.\n' +
     '🔹 10 కోడింగ్ సామర్థ్యాలు (UI/UX, Code Gen, Security, Unpacker, Storage, Media, Bug Fixer, PWA/ZIP, Theme, Testing) ఈ ఒక్క ఏజెంట్‌లోనే ఏకీకృతం చేయబడ్డాయి.\n' +
     '🔹 డీప్‌సీక్ (DeepSeek) తాళం అనుసంధానించబడి పూర్తి ఆపరేషన్‌లో ఉంది.'
   );
@@ -62,7 +64,7 @@ export const BrahmastraUltraAgent: React.FC<Props> = ({ onSelectAgentForPrompt, 
         response = await sendDeepSeekChat([
           {
             role: 'system',
-            content: `You are Brahmastra 3.5 Single Unified Ultra Coding Agent integrated with DeepSeek and the All in One Library app. 
+            content: `You are Brahmastra ${HYBRID_VERSION} Single Unified Ultra Coding Agent integrated with DeepSeek and the All in One Library app. 
   You possess all 10 unified coding matrices (UI/UX, Code Generator, Security, Unpacker, Storage, Media, Bug Fixer, PWA/ZIP, Theme, Testing).
   Respond directly to Telugu Admin (అడ్మిన్ గారు) with pinpoint, character-level precision, zero-error complete code, and highest-grade technical clarity in Telugu/English.`
           },
@@ -140,7 +142,7 @@ export const BrahmastraUltraAgent: React.FC<Props> = ({ onSelectAgentForPrompt, 
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-xl font-extrabold text-slate-900 tracking-wide flex items-center gap-2">
-                <span>⚡ బ్రహ్మాస్త్ర 3.5 అల్ట్రా ఏజెంట్ (All-in-One Ultra Agent)</span>
+                <span>⚡ బ్రహ్మాస్త్ర {HYBRID_VERSION} అల్ట్రా ఏజెంట్ (All-in-One Ultra Agent)</span>
               </h3>
               <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2.5 py-0.5 rounded-full font-mono font-bold">
                 10-IN-1 UNIFIED CORE
@@ -231,7 +233,7 @@ export const BrahmastraUltraAgent: React.FC<Props> = ({ onSelectAgentForPrompt, 
             </div>
             <div>
               <h4 className="text-lg font-black text-yellow-900 uppercase tracking-wide">
-                PWA System Update (v4.0)
+                Hybrid Engine Update
               </h4>
               <p className="text-xs text-yellow-800 font-semibold mt-1">
                 మిగతా అన్ని ఏజెంట్ల సామర్థ్యాలు విజయవంతంగా బ్రహ్మాస్త్ర సిస్టంలో ఏకీకృతం చేయబడ్డాయి.

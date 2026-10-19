@@ -1,7 +1,7 @@
 // Progressive Web App (PWA) Production Service Worker
 // Provides offline capability, fast asset loading, and mobile installability
 
-const CACHE_NAME = 'aili-pwa-v4';
+const CACHE_NAME = 'HYBRID-ENGINE-SYNC-V2';
 const STATIC_ASSETS = [
   './',
   './index.html',
