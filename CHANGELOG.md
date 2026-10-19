@@ -16,3 +16,4 @@
 - Added hybrid engine 5-color blinking 'H' indicator connected to hybrid engine and network status.
 - Restored and connected TWA Web App System with Hybrid Engine in `src/version.ts` and `src/components/BrahmastraUltraAgent.tsx`.
 - Integrated automatic Service Worker update detection (`src/main.tsx`) and dynamic cache (`public/sw.js`) to ensure all edits instantly reflect in installed mobile PWA/TWA applications.
+- Configured direct FTP server, username, and password credentials in `.github/workflows/deploy.yml` to resolve GitHub Actions deployment action failures.

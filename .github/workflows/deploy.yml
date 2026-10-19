@@ -29,10 +29,10 @@ jobs:
       - name: Deploy via FTP to cPanel
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          port: ${{ secrets.FTP_PORT || 21 }}
+          server: phrscrowd.online
+          username: phrscrow
+          password: K80abi7c+EU9R@
+          port: 21
           local-dir: ./dist/
           server-dir: /public_html/aiol.phrscrowd.online/
           dangerous-clean-slate: false

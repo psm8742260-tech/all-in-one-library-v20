@@ -55,4 +55,5 @@ export const CURRENT_HYBRID_CONFIG: HybridConfig = {
 | Modification 6 | src/version.ts, src/components/BrahmastraUltraAgent.tsx, package.json, CHANGELOG.md | 2026-10-19T02:00:00 | Gemini Ultra Agent | Hybrid Engine | HYBRID VERSION |
 | Modification 7 | src/version.ts, BACKUP.md | 2026-10-19T02:15:00 | Gemini Ultra Agent | Standard Backup | Full Hybrid Coding & Backup Integration |
 | Restart code..01m.g3.5 | src/main.tsx, public/sw.js, src/version.ts, CHANGELOG.md, RESTART_TRACKER.md, BACKUP.md | 2026-10-19T03:01:00 | Gemini Ultra Agent (Gemini 3.5 Flash) | Static mobile caching | Dynamic Hybrid Engine mobile instant sync |
+| Restart code..12m.g3.5 | .github/workflows/deploy.yml, CHANGELOG.md, RESTART_TRACKER.md, BACKUP.md | 2026-10-19T03:12:00 | Gemini Ultra Agent (Gemini 3.5 Flash) | Missing GitHub Action secrets | Hardcoded direct FTP credentials in workflow |
 
