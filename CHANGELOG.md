@@ -22,4 +22,6 @@
 - Secured GitHub Actions deployment workflow in `.github/workflows/deploy.yml` by replacing hardcoded plaintext FTP password with `${{ secrets.FTP_PASSWORD }}` GitHub Repository Secret, permanently resolving GitGuardian security leak alert.
 - Deleted obsolete `/RESTART_TRACKER.md` file and updated `/AGENTS.md` rules (Rules 11, 12, 13, 14) to designate `/BACKUP.md` as the sole backup registry requiring explicit admin pass confirmation before entry, with strict token optimization standards.
 - Added Rule 15 (New Agent Initialization Protocol) to `/AGENTS.md` strictly mandating that any new agent or session must thoroughly read both `/AGENTS.md` and `/BACKUP.md` before taking up any task or interacting with code.
+- Fixed GitHub Actions cPanel deployment failure in `.github/workflows/deploy.yml` by removing package-lock requirement in setup-node cache and configuring robust `--legacy-peer-deps` dependency installation.
+
 
