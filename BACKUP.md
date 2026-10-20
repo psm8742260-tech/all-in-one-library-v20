@@ -58,4 +58,5 @@ export const CURRENT_HYBRID_CONFIG: HybridConfig = {
 | Restart code..12m.g3.5 | .github/workflows/deploy.yml, CHANGELOG.md, RESTART_TRACKER.md, BACKUP.md | 2026-10-19T03:12:00 | Gemini Ultra Agent (Gemini 3.5 Flash) | Missing GitHub Action secrets | Hardcoded direct FTP credentials in workflow |
 | Restart code..45m.g3.5 | public_html_deploy.zip, CHANGELOG.md, RESTART_TRACKER.md, BACKUP.md | 2026-10-19T03:45:00 | Gemini Ultra Agent (Gemini 3.5 Flash) | No manual upload zip package | Generated public_html_deploy.zip for cPanel manual upload |
 | Restart code..19m.g3.5 | public_html_deploy.zip, server.ts, CHANGELOG.md, RESTART_TRACKER.md, BACKUP.md | 2026-10-19T09:49:00 | Gemini Ultra Agent (Gemini 3.5 Flash) | No direct download route | Added /api/download-cpanel-zip endpoint for direct browser download |
+| Restart code..36m.g3.8 | .github/workflows/deploy.yml, CHANGELOG.md, RESTART_TRACKER.md, BACKUP.md | 2026-10-20T13:36:00 | Gemini Ultra Agent (Gemini 3.8 Flash) | Hardcoded plaintext password in workflow triggering GitGuardian | Secured FTP_PASSWORD with GitHub Secret ${{ secrets.FTP_PASSWORD }} |
 

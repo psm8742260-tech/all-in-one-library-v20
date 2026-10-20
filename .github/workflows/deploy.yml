@@ -31,7 +31,7 @@ jobs:
         with:
           server: phrscrowd.online
           username: phrscrow
-          password: K80abi7c+EU9R@
+          password: ${{ secrets.FTP_PASSWORD }}
           port: 21
           local-dir: ./dist/
           server-dir: /public_html/aiol.phrscrowd.online/
